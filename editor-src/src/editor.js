@@ -4,7 +4,7 @@
 // render elements inline, revealing raw source on the active line/selection.
 // Bundled to a single IIFE (global `QVEditor`) so the app stays offline.
 
-import { EditorState, EditorSelection, StateField, Transaction } from "@codemirror/state";
+import { EditorState, EditorSelection, StateField, StateEffect, Transaction } from "@codemirror/state";
 import {
   EditorView, Decoration, WidgetType, keymap, drawSelection,
 } from "@codemirror/view";
@@ -361,7 +361,12 @@ function enhanceTableWidget(el, view, widget) {
   mk("↔", "이 열 가운데 정렬", () => setAlign("center"));
   mk("⇥", "이 열 오른쪽 정렬", () => setAlign("right"));
   sep();
-  mk("MD", "마크다운 원본 편집", () => placeCursor(view, el));
+  mk("MD", "마크다운 원본 편집 (커서가 표를 벗어나면 복귀)", () => {
+    const rg = range();
+    if (!rg) return;
+    view.dispatch({ effects: setRawOverride.of(rg), selection: { anchor: rg.from } });
+    view.focus();
+  });
   el.appendChild(bar);
 }
 
@@ -440,6 +445,26 @@ class BulletWidget extends WidgetType {
 const HIDE = Decoration.replace({});
 
 function lineNums(doc, from, to) { return [doc.lineAt(from).number, doc.lineAt(to).number]; }
+
+// Temporary "source mode" for one table (the toolbar's MD button): while the
+// caret stays inside the range the table renders as raw pipes; leaving the
+// range clears the override and the fixed widget returns.
+const setRawOverride = StateEffect.define({
+  map: (v, ch) => v && { from: ch.mapPos(v.from), to: ch.mapPos(v.to, 1) },
+});
+const rawOverride = StateField.define({
+  create: () => null,
+  update(v, tr) {
+    for (const e of tr.effects) if (e.is(setRawOverride)) v = e.value;
+    if (!v) return null;
+    if (tr.docChanged) v = { from: tr.changes.mapPos(v.from), to: tr.changes.mapPos(v.to, 1) };
+    if (tr.selection) {
+      const h = tr.selection.main.head;
+      if (h < v.from || h > v.to) return null;
+    }
+    return v;
+  },
+});
 
 function buildDecorations(state) {
   const doc = state.doc;
@@ -573,21 +598,12 @@ function buildDecorations(state) {
           align = (/fig-align="?(left|center|right)"?/.exec(am[1]) || [])[1] || null;
           if (width || align) end = to + am[0].length;   // only swallow attrs we understand
         }
-        if (m && !spanActive(from, end)) {
-          decos.push({ from, to: end, deco: Decoration.replace({ widget: new ImageWidget(m[2].trim(), m[1], width, align) }) });
+        // FIXED widget (Obsidian-style): images never flip to raw source — the
+        // caret can't enter them (atomic), and editing happens through the
+        // resize grip / alignment toolbar. Delete = backspace over the widget.
+        if (m) {
+          decos.push({ from, to: end, deco: Decoration.replace({ widget: new ImageWidget(m[2].trim(), m[1], width, align), fixed: true }) });
           return false;
-        }
-        // Active line: the source is revealed for editing — but a data: URI is
-        // a wall of base64 nobody edits by hand. Keep the document text intact
-        // and fold just the URL span into a compact token, UNCONDITIONALLY:
-        // even with the caret inside it (clicking the image, right after a
-        // paste) the fold must hold, or the base64 explodes over the screen.
-        // The fold is atomic, so the caret skips it and backspace removes the
-        // whole URL in one stroke.
-        if (m && m[2].startsWith("data:")) {
-          const urlFrom = from + m[0].indexOf("(") + 1;
-          const urlTo = from + m[0].length - 1;
-          decos.push({ from: urlFrom, to: urlTo, deco: Decoration.replace({ widget: new DataUriToken(urlTo - urlFrom) }) });
         }
         return true;
       }
@@ -601,14 +617,16 @@ function buildDecorations(state) {
         return true;
       }
       if (name === "Table") {
-        // Render GFM tables like callouts: a widget when the cursor is outside,
-        // raw pipe source when editing inside.
-        if (!linesActive(from, to)) {
-          const src = doc.sliceString(from, to);
-          decos.push({ from, to, deco: Decoration.replace({ widget: new BlockWidget(src), block: true }) });
-          return false;
-        }
-        return true;
+        // FIXED widget (Obsidian-style): the table never flips to raw source
+        // from cursor proximity or clicks — editing happens in-place through
+        // cell inputs and the hover toolbar. The only way to see the pipes is
+        // the toolbar's MD button, which sets a temporary raw override that
+        // clears when the caret leaves the table again.
+        const ro = state.field(rawOverride, false);
+        if (ro && from < ro.to && to > ro.from) return true;   // source mode for this table
+        const src = doc.sliceString(from, to);
+        decos.push({ from, to, deco: Decoration.replace({ widget: new BlockWidget(src), block: true, fixed: true }) });
+        return false;
       }
       if (name === "HorizontalRule") {
         if (!linesActive(from, to)) decos.push({ from, to, deco: Decoration.replace({ widget: new HRWidget() }) });
@@ -678,16 +696,18 @@ function buildDecorations(state) {
   // Decoration.set sorts by from + startSide, which correctly orders the mix of
   // line / inline-mark / inline-replace / block-widget decorations we produce.
   const all = Decoration.set(decos.map((d) => d.deco.range(d.from, d.to)), true);
-  // Only INLINE replaced ranges (hidden syntax markers, inline math/images)
-  // are atomic for cursor motion. Two hard-won rules:
-  //  - line/mark styling must not be atomic: treating styled lines as atoms
-  //    made ArrowUp skip through them to the document top;
-  //  - block widgets must not be atomic: arrowing into them has to reveal the
-  //    source so tables/callouts/code stay editable by keyboard.
+  // Atomic ranges for cursor motion. Hard-won rules:
+  //  - INLINE replaced ranges (hidden syntax markers, inline math/images) are
+  //    atomic; line/mark styling must not be (ArrowUp skipped to doc top);
+  //  - reveal-on-cursor block widgets (callouts, code, front matter) must NOT
+  //    be atomic — arrowing in reveals the source for keyboard editing;
+  //  - FIXED widgets (tables, images) ARE atomic even as blocks: the caret can
+  //    never enter them, so it skips over and delete removes them whole.
   const atomic = Decoration.set(
     decos
       .filter((d) => {
         const spec = d.deco.spec || {};
+        if (spec.fixed) return true;
         return !d.line && !spec.class && !spec.block;
       })
       .map((d) => d.deco.range(d.from, d.to)),
@@ -701,7 +721,9 @@ function buildDecorations(state) {
 const livePreview = StateField.define({
   create: (state) => buildDecorations(state),
   update(value, tr) {
-    if (tr.docChanged || tr.selection) return buildDecorations(tr.state);
+    if (tr.docChanged || tr.selection || tr.effects.some((e) => e.is(setRawOverride))) {
+      return buildDecorations(tr.state);
+    }
     return value;
   },
   provide: (f) => [
@@ -855,6 +877,29 @@ function moveByLine(view, forward) {
     const col = Math.min(line.length, goal);
     dest = EditorSelection.cursor(line.from + col, -1, undefined, target.goalColumn);
   }
+  // Fixed widgets (tables, images) are atomic: the caret must never land
+  // INSIDE their replaced range (it would be invisible and typing would edit
+  // hidden markdown). If the computed destination falls inside one, hop to the
+  // line just past the widget in the direction of travel.
+  {
+    const lp = state.field(livePreview, false);
+    if (lp) {
+      let hit = null;
+      lp.atomic.between(dest.head, dest.head, (f, t) => {
+        if (f < dest.head && t > dest.head) { hit = { f, t }; return false; }
+      });
+      if (hit) {
+        const doc = state.doc;
+        const goal = dest.goalColumn ?? 0;
+        let ln = forward
+          ? Math.min(doc.lineAt(hit.t).number + 1, doc.lines)
+          : Math.max(doc.lineAt(hit.f).number - 1, 1);
+        const line = doc.line(ln);
+        const col = Math.min(line.length, goal);
+        dest = EditorSelection.cursor(line.from + col, -1, undefined, goal);
+      }
+    }
+  }
   view.dispatch(state.update({
     selection: EditorSelection.create([dest]),
     scrollIntoView: true,
@@ -933,6 +978,7 @@ function create(parent, opts = {}) {
       bracketMatching(),
       markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [GFM] }),
       syntaxHighlighting(codeHighlight),
+      rawOverride,
       livePreview,
       theme,
       EditorView.lineWrapping,
