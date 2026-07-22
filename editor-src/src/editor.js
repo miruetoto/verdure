@@ -658,9 +658,32 @@ function create(parent, opts = {}) {
     run: () => { opts.onNew && opts.onNew(); return true; },
     preventDefault: true,
   };
+  // ⌘-arrow navigation on DOCUMENT lines. CM's default line-boundary commands
+  // work on *visual* lines measured from the DOM; with replaced widgets
+  // (tables, math, callouts) that measurement goes wrong and the caret jumps
+  // to arbitrary neighboring lines. Document-line semantics are predictable.
+  const jumpTo = (v, pos, extend) => {
+    const sel = v.state.selection.main;
+    v.dispatch(v.state.update({
+      selection: extend
+        ? EditorSelection.create([EditorSelection.range(sel.anchor, pos)])
+        : { anchor: pos },
+      scrollIntoView: true,
+      userEvent: "select",
+    }));
+    return true;
+  };
+  const lineEdge = (v, toEnd, extend) => {
+    const line = v.state.doc.lineAt(v.state.selection.main.head);
+    return jumpTo(v, toEnd ? line.to : line.from, extend);
+  };
   const arrowKeys = [
     { key: "ArrowDown", run: (v) => moveByLine(v, true) },
     { key: "ArrowUp", run: (v) => moveByLine(v, false) },
+    { key: "Mod-ArrowLeft", run: (v) => lineEdge(v, false, false), shift: (v) => lineEdge(v, false, true) },
+    { key: "Mod-ArrowRight", run: (v) => lineEdge(v, true, false), shift: (v) => lineEdge(v, true, true) },
+    { key: "Mod-ArrowUp", run: (v) => jumpTo(v, 0, false), shift: (v) => jumpTo(v, 0, true) },
+    { key: "Mod-ArrowDown", run: (v) => jumpTo(v, v.state.doc.length, false), shift: (v) => jumpTo(v, v.state.doc.length, true) },
   ];
 
   // A document's whole editor state (doc + history + cursor) is built here, so
