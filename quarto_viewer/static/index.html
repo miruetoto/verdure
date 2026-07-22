@@ -369,6 +369,136 @@ if (window.__TAURI__) {
   window.addEventListener("DOMContentLoaded", () => setTimeout(() => window.dispatchEvent(new Event("pywebviewready")), 0));
 }
 </script>
+<script>
+// ── Web (browser) adapter ──────────────────────────────────────────────────
+// Running as a plain web page (no Tauri, no pywebview): provide the same
+// window.pywebview.api surface backed by the File System Access API so the
+// editor works in a browser (Chrome/Edge full; Safari read-only fallbacks).
+// Gated: waits 400ms after DOMContentLoaded so a real pywebview backend, which
+// injects window.pywebview itself, always wins.
+if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTimeout(() => {
+  if (window.pywebview) return;   // real backend appeared → not web mode
+  const fileHandles = new Map();  // path -> FileSystemFileHandle
+  const dirHandles  = new Map();  // path -> FileSystemDirectoryHandle
+  const mtimes      = new Map();  // path -> lastModified
+  let activePath = "";
+  const EXT = /\.(qmd|md|markdown)$/i;
+  const stateOf = async (path, handle) => {
+    const f = await handle.getFile();
+    mtimes.set(path, f.lastModified);
+    return { text: await f.text(), title: handle.name, path };
+  };
+  const parentDirOf = (path) => {
+    const i = path.lastIndexOf("/");
+    return i > 0 ? dirHandles.get(path.slice(0, i)) : null;
+  };
+  window.pywebview = { api: {
+    get_state: async () => ({ text: "", title: "", path: "", folder: null }),
+    help_doc: async () => ({ text: "# 푸르름 (웹)\n\n**열기** 버튼으로 `.qmd`/`.md` 파일을 엽니다. 편집·수식·콜아웃·저장(⌘S)이 동작합니다.\n\n> 웹 버전 제한: 이미지 붙여넣기·그림판 저장은 데스크톱 앱에서만 지원됩니다.", title: "도움말", path: "" }),
+    read_path: async (path) => {
+      const h = fileHandles.get(path);
+      if (h) return stateOf(path, h);
+      return { text: "> **파일을 읽을 수 없습니다:** " + path, title: path, path };
+    },
+    list_dir: async (path) => {
+      const dir = dirHandles.get(path);
+      if (!dir) return { path, name: path, entries: [] };
+      const entries = [];
+      for await (const [name, h] of dir.entries()) {
+        if (name.startsWith(".")) continue;
+        const p = path + "/" + name;
+        if (h.kind === "directory") { dirHandles.set(p, h); entries.push({ name, path: p, is_dir: true }); }
+        else if (EXT.test(name)) { fileHandles.set(p, h); entries.push({ name, path: p, is_dir: false }); }
+      }
+      entries.sort((a, b) => (a.is_dir !== b.is_dir) ? (a.is_dir ? -1 : 1) : a.name.localeCompare(b.name));
+      return { path, name: dir.name, entries };
+    },
+    open_file: async () => {
+      try {
+        if (window.showOpenFilePicker) {
+          const [h] = await window.showOpenFilePicker({ types: [{ description: "Quarto/Markdown", accept: { "text/markdown": [".qmd", ".md", ".markdown"] } }] });
+          const path = "web:" + h.name;
+          fileHandles.set(path, h); activePath = path;
+          return stateOf(path, h);
+        }
+        // Safari fallback: hidden <input type=file> (read-only; save → download)
+        return await new Promise((resolve) => {
+          const inp = Object.assign(document.createElement("input"), { type: "file", accept: ".qmd,.md,.markdown" });
+          inp.onchange = async () => {
+            const f = inp.files[0];
+            if (!f) return resolve(null);
+            resolve({ text: await f.text(), title: f.name, path: "web:" + f.name });
+          };
+          inp.click();
+        });
+      } catch (_) { return null; }  // user cancelled
+    },
+    open_folder: async () => {
+      try {
+        if (!window.showDirectoryPicker) return null;
+        const h = await window.showDirectoryPicker();
+        dirHandles.set(h.name, h);
+        return { folder: h.name };
+      } catch (_) { return null; }
+    },
+    set_active: async (path) => { activePath = path || ""; return { ok: true }; },
+    set_folder: async () => ({ ok: true }),
+    track: async (paths) => { for (const p of [...mtimes.keys()]) if (!(paths || []).includes(p)) mtimes.delete(p); return { ok: true }; },
+    poll: async () => {
+      const changed = [];
+      for (const [path, last] of mtimes) {
+        const h = fileHandles.get(path);
+        if (!h) continue;
+        try { const f = await h.getFile(); if (f.lastModified !== last) changed.push(await stateOf(path, h)); } catch (_) {}
+      }
+      return changed.length ? changed : null;
+    },
+    save: async (text) => {
+      const h = fileHandles.get(activePath);
+      if (h && h.createWritable) {
+        try {
+          const w = await h.createWritable();
+          await w.write(text); await w.close();
+          const f = await h.getFile(); mtimes.set(activePath, f.lastModified);
+          return { saved: true, title: h.name, path: activePath };
+        } catch (_) { /* fall through to download */ }
+      }
+      // No writable handle (untitled doc or Safari): save as download.
+      const name = (h && h.name) || "untitled.qmd";
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([text], { type: "text/markdown" })), download: name });
+      a.click(); URL.revokeObjectURL(a.href);
+      return { saved: true, title: name, path: activePath || "web:" + name };
+    },
+    save_as: async function (text) { return this.save(text); },
+    resolve_asset: async (src) => {
+      // Relative images resolve only when the file came from an opened folder.
+      if (!src || /^(https?:|data:)/.test(src)) return null;
+      try {
+        let dir = parentDirOf(activePath);
+        if (!dir) return null;
+        const parts = src.split("/").filter((s) => s && s !== ".");
+        for (let i = 0; i < parts.length - 1; i++) dir = await dir.getDirectoryHandle(parts[i]);
+        const fh = await dir.getFileHandle(parts[parts.length - 1]);
+        const f = await fh.getFile();
+        return await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+      } catch (_) { return null; }
+    },
+    paste_image: async () => ({ skipped: "no-image" }),
+    save_drawing: async () => ({ error: "웹 버전에서는 그림 저장이 지원되지 않습니다" }),
+    open_url: async (url) => { if (/^https?:/.test(url)) window.open(url, "_blank"); return { opened: true }; },
+    open_export: async (html) => {
+      // Print page opens in a new tab; <base> makes vendored assets resolve.
+      const base = '<base href="' + location.origin + location.pathname.replace(/[^/]*$/, "") + '">';
+      const w = window.open("", "_blank");
+      if (!w) return { error: "팝업이 차단되었습니다" };
+      w.document.write(html.replace("<head>", "<head>" + base));
+      w.document.close();
+      return { opened: true };
+    },
+  } };
+  window.dispatchEvent(new Event("pywebviewready"));
+}, 400));
+</script>
 <script src="vendor/cm6/editor.bundle.js"></script>
 <script src="vendor/marked.min.js"></script>
 <script src="vendor/highlight.min.js"></script>
