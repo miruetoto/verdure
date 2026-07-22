@@ -1,0 +1,177 @@
+/* Shared document styles for the in-app preview widgets (.qv-block .qdoc) and
+   the PDF export (.doc-print.qdoc).
+
+   Values are measured from the real 신록예찬's Blog (Quarto cosmo theme +
+   styles.css), rendered at docs/Posts/*.html — not invented. Base rhythm:
+   13.6px/1.5 NanumMyeongjo, coral headings/links, purple inline code. */
+
+@font-face {
+  font-family: 'NanumMyeongjo'; font-weight: normal; font-style: normal;
+  src: url('fonts/NanumMyeongjo.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'NanumMyeongjo'; font-weight: bold; font-style: normal;
+  src: url('fonts/NanumMyeongjoBold.ttf') format('truetype');
+}
+
+:root {
+  --serif: 'NanumMyeongjo', 'Nanum Myeongjo', serif;
+  --mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --bg: #fcfcf7;            /* body background */
+  --body: #555555;          /* base text */
+  --fg: #333333;            /* paragraphs / strong */
+  --muted: #6c757d;
+  --heading: #ff6f61;       /* coral headings (styles.css) */
+  --link: #ff6f61; --link-hover: #d64b40;
+  --border: #dee2e6;        /* bootstrap border gray */
+  --code-fg: #7d12ba;       /* inline code purple */
+  --code-bg: rgba(233, 236, 239, 0.65);
+  --pre-fg: #24292e;
+  --quote-border: #e9ecef;
+  --quote-fg: hsl(210, 10.3%, 47.7%);
+  --tab-link: #2761e3;      /* cosmo link blue for inactive tabs */
+  /* Quarto callout accent colors (cosmo) */
+  --co-note: #2780e3; --co-tip: #3fb618; --co-warning: #ff7518;
+  --co-caution: #f0ad4e; --co-important: #ff0039;
+  /* header tint = 10% accent + 90% white (measured) */
+  --co-note-bg: rgb(233.4, 242.3, 252.2);
+  --co-tip-bg: rgb(236, 248, 232);
+  --co-warning-bg: rgb(255, 241.2, 231.9);
+  --co-caution-bg: rgb(253.5, 246.8, 237.3);
+  --co-important-bg: rgb(255, 229.5, 235.2);
+  /* app chrome (toolbar) */
+  --toolbar: #f7f5ec; --hover: #f0eddf; --border-strong: #dcd8c8; --accent: #ff6f61;
+  --caution: #f0ad4e;
+}
+
+.qdoc {
+  font-family: var(--serif); font-size: 16px; line-height: 1.5;
+  color: var(--body); word-wrap: break-word;
+}
+.qdoc > *:first-child { margin-top: 0; }
+
+/* ---- headings: coral, weight 600; h1/h2 ruled like Quarto sections ---- */
+.qdoc h1, .qdoc h2, .qdoc h3, .qdoc h4, .qdoc h5, .qdoc h6 {
+  font-family: var(--serif); color: var(--heading); font-weight: 600;
+  line-height: 1.2; margin: 1.5em 0 0.5em;
+}
+.qdoc h1, .qdoc h2 { font-size: 2em; }
+.qdoc h1, .qdoc h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
+.qdoc h3 { font-size: 1.45em; }
+.qdoc h4 { font-size: 1.15em; }
+.qdoc h5, .qdoc h6 { font-size: 1em; }
+
+.qdoc p { margin: 0 0 1em; color: var(--fg); }
+.qdoc li { color: var(--body); }
+.qdoc ul, .qdoc ol { padding-left: 2em; margin: 0 0 1em; }
+.qdoc a { color: var(--link); text-decoration: none; transition: color .3s ease; }
+.qdoc a:hover { text-decoration: underline; color: var(--link-hover); }
+.qdoc strong { font-weight: 700; color: var(--fg); }
+
+/* ---- code: purple inline chips, gray block panels (measured) ---- */
+.qdoc code {
+  font-family: var(--mono); font-size: 0.875em;
+  color: var(--code-fg); background-color: var(--code-bg);
+  padding: 0.2em; border-radius: 0;
+}
+.qdoc pre {
+  background-color: var(--code-bg); border: 1px solid var(--code-bg);
+  border-radius: 0.25em; padding: 0.6em 0.75em; overflow: auto;
+  margin: 0 0 1em; font-family: var(--mono); font-size: 0.875em; line-height: 1.5;
+  color: var(--pre-fg);
+}
+.qdoc pre code { background: none; padding: 0; color: inherit; font-size: 1em; border-radius: 0; }
+
+/* ---- blockquote (bootstrap) ---- */
+.qdoc blockquote {
+  margin: 0 0 1em; padding: 0.625em 1.25em;
+  border-left: 0.25em solid var(--quote-border); color: var(--quote-fg);
+}
+.qdoc blockquote p { color: var(--quote-fg); }
+.qdoc blockquote p:last-child { margin-bottom: 0; }
+
+/* ---- tables: horizontal rules only, like the blog ---- */
+.qdoc table {
+  border-collapse: collapse; margin: 0.5em 0 1em; font-size: 1em;
+  display: block; overflow: auto; width: max-content; max-width: 100%;
+}
+.qdoc th, .qdoc td {
+  border: 0; border-bottom: 1px solid var(--border);
+  padding: 0.5em; background: transparent; text-align: left;
+}
+.qdoc thead th { border-bottom: 2px solid var(--border); font-weight: 700; }
+.qdoc tbody tr:last-child td { border-bottom: 1px solid var(--border); }
+.qdoc img { max-width: 100%; }
+.qdoc hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+.qdoc .figcaption, .qdoc figcaption { color: var(--muted); font-size: 0.9em; margin: 0.3em 0 1em; }
+
+/* math — verbatim from the blog's styles.css (applies to pandoc spans) */
+.math.display { font-size: 1.2em !important; margin: 1em 0 !important; display: block; }
+.math.inline { font-size: 1.15em !important; }
+/* Only BLOCK/display math may scroll horizontally. Applying overflow-x:auto to
+   inline math makes WKWebView blow the inline-block up to max-width (the whole
+   line), leaving a huge gap after inline formulas. Scope it to display math. */
+mjx-container[display="true"] { max-width: 100%; overflow-x: auto; overflow-y: hidden; }
+/* WKWebView shows MathJax's hidden assistive-MathML copy → formulas double. */
+mjx-assistive-mml { display: none !important; }
+
+/* ---- Front matter title block (Quarto-style AUTHOR/PUBLISHED columns) ---- */
+.frontmatter { margin-bottom: 1.5em; }
+.frontmatter .title {
+  font-family: var(--serif); color: var(--heading);
+  font-size: 2em; font-weight: 600; line-height: 1.2; margin: 0;
+}
+.frontmatter .meta { color: var(--muted); margin-top: 0.4em; font-size: 0.95em; }
+.fm-meta { display: flex; gap: 5em; margin-top: 1em; }
+.fm-label {
+  font-size: 0.78em; color: var(--muted); letter-spacing: 0.03em;
+  text-transform: uppercase; margin-bottom: 0.15em;
+}
+.fm-value { color: var(--body); font-size: 0.95em; }
+
+/* ---- Quarto callouts (cosmo, measured) ---- */
+.callout {
+  margin: 1.25em 0; border: 1px solid var(--border);
+  border-left: 5px solid var(--cc, var(--co-note));
+  border-radius: 0.25em; overflow: hidden; background: transparent;
+}
+.callout-header {
+  display: flex; align-items: center; gap: 0.4em;
+  padding: 0.45em 0.65em; font-weight: 600; font-size: 0.9em;
+  background-color: var(--ccbg, var(--co-note-bg)); color: var(--body);
+}
+.callout-header svg { width: 1.05em; height: 1.05em; flex: none; color: var(--cc, var(--co-note)); }
+.callout-body { padding: 0.5em 0.65em; font-size: 0.9em; }
+.callout-body > *:first-child { margin-top: 0; }
+.callout-body > *:last-child { margin-bottom: 0; }
+.callout-note      { --cc: var(--co-note);      --ccbg: var(--co-note-bg); }
+.callout-tip       { --cc: var(--co-tip);       --ccbg: var(--co-tip-bg); }
+.callout-warning   { --cc: var(--co-warning);   --ccbg: var(--co-warning-bg); }
+.callout-caution   { --cc: var(--co-caution);   --ccbg: var(--co-caution-bg); }
+.callout-important { --cc: var(--co-important); --ccbg: var(--co-important-bg); }
+.qdiv { margin: 1em 0; }
+
+/* ---- Quarto tabsets (bootstrap nav-tabs, measured) ---- */
+.tabset { margin: 1em 0; }
+.tab-bar { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.tab-btn {
+  font-family: var(--serif); font-size: 1em; line-height: 1.5;
+  color: var(--tab-link); background: transparent; cursor: pointer;
+  border: 1px solid transparent; border-radius: 0.25em 0.25em 0 0;
+  padding: 0.5em 1em; margin-bottom: -1px;
+}
+.tab-btn:hover { border-color: var(--quote-border) var(--quote-border) var(--border); }
+.tab-btn.active {
+  color: #000; background-color: #fff;
+  border-color: var(--border) var(--border) #fff;
+}
+.tab-panel { display: none; padding: 1em 0.2em 0.2em; }
+.tab-panel.active { display: block; }
+.tab-panel > *:first-child { margin-top: 0; }
+
+/* Missing image placeholder */
+.img-missing {
+  display: inline-block; padding: 0.5em 0.75em; margin: 0.25em 0;
+  border: 1px dashed var(--border); border-radius: 0.25em;
+  color: var(--muted); font-size: 0.9em; background: var(--code-bg);
+}

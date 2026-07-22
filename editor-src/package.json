@@ -1,0 +1,27 @@
+{
+  "name": "quarto-viewer-editor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CodeMirror 6 live-preview editor bundle for Quarto Viewer",
+  "scripts": {
+    "build": "esbuild src/editor.js --bundle --format=iife --global-name=QVEditor --outfile=../quarto_viewer/static/vendor/cm6/editor.bundle.js --minify"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "jsdom": "^29.1.1",
+    "playwright": "^1.61.1",
+    "puppeteer-core": "^25.3.0"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.6.0",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/language": "^6.10.0",
+    "@codemirror/language-data": "^6.5.0",
+    "@codemirror/state": "^6.4.0",
+    "@codemirror/view": "^6.34.0",
+    "@lezer/common": "^1.2.0",
+    "@lezer/highlight": "^1.2.0",
+    "@lezer/markdown": "^1.3.0",
+    "mathjax": "^3.2.2"
+  }
+}

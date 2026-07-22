@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>푸르름</title>
+<link rel="stylesheet" href="vendor/github.min.css" />
+<link rel="stylesheet" href="doc.css" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 16px/1.75 var(--serif);
+    color: var(--body); background: var(--bg);
+    display: flex; flex-direction: column; overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: center; gap: 3px;
+    height: 48px; padding: 0 10px; flex: none;
+    background: color-mix(in srgb, var(--toolbar) 90%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--border);
+    -webkit-user-select: none; user-select: none;
+  }
+  /* icon toolbar buttons */
+  .tbtn {
+    position: relative; display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; flex: none; padding: 0; cursor: pointer;
+    color: var(--muted); background: transparent;
+    border: 1px solid transparent; border-radius: 8px;
+    transition: background .12s, color .12s, transform .06s;
+  }
+  .tbtn:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+  .tbtn:active { transform: translateY(.5px); }
+  .tbtn svg { width: 17px; height: 17px; }
+  /* tooltip */
+  .tbtn::after {
+    content: attr(data-tip); position: absolute; top: 38px; left: 50%;
+    transform: translateX(-50%) translateY(-3px); white-space: nowrap;
+    font: 500 11px/1 -apple-system, system-ui, sans-serif; color: #f4f2e8;
+    background: #2b2b26; padding: 5px 8px; border-radius: 6px;
+    opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s; z-index: 60;
+  }
+  .tbtn:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); transition-delay: .35s; }
+  .tsep { width: 1px; height: 20px; background: var(--border); margin: 0 6px; flex: none; }
+  /* Left toolbar group pinned to the sidebar's width (232px + 1px border), so
+     the tab strip begins exactly on the sidebar/editor split line below. */
+  #tb-left {
+    display: flex; align-items: center; gap: 3px;
+    width: 223px; flex: none;   /* header has 10px left padding: 10+223 = 233 */
+  }
+  #status { color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; margin-left: 6px; }
+  #reload-btn {
+    display: none; align-items: center; gap: 5px; flex: none; margin-left: 4px;
+    font: 500 11.5px/1 -apple-system, system-ui, sans-serif;
+    color: #fff; background: var(--caution); border: none;
+    border-radius: 7px; padding: 6px 9px; cursor: pointer;
+  }
+  #reload-btn:hover { filter: brightness(1.05); }
+  #reload-btn.show { display: inline-flex; }
+
+  /* ---- tab strip ---- */
+  #tabs {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px;
+    overflow-x: auto; overflow-y: hidden; height: 100%; padding: 0 2px;
+    scrollbar-width: none;
+  }
+  #tabs::-webkit-scrollbar { display: none; }
+  /* Tabs are floating pills, vertically centered in the toolbar. (The previous
+     browser-style "open bottom" tab never actually reached the toolbar's bottom
+     border, so its transparent bottom edge floated mid-air and looked crooked.) */
+  .tab {
+    display: inline-flex; align-items: center; gap: 6px; flex: none;
+    max-width: 220px; height: 30px; padding: 0 6px 0 12px; cursor: default;
+    font: 500 12.5px/1 -apple-system, system-ui, sans-serif; color: var(--muted);
+    background: transparent; border: 1px solid transparent;
+    border-radius: 8px; user-select: none;
+  }
+  .tab:hover { background: color-mix(in srgb, var(--hover) 70%, transparent); }
+  .tab.active {
+    color: var(--fg); background: var(--bg);
+    border-color: var(--border);
+  }
+  .tab-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .tab.dirty .tab-name::before { content: "• "; color: var(--accent); font-weight: 700; }
+  .tab.external .tab-name::after { content: " ⚠"; color: var(--caution); }
+  .tab-close {
+    flex: none; width: 17px; height: 17px; border: none; border-radius: 5px;
+    background: transparent; color: var(--muted); cursor: pointer; padding: 0;
+    font-size: 14px; line-height: 15px; opacity: .55;
+  }
+  .tab:hover .tab-close, .tab.active .tab-close { opacity: 1; }
+  .tab-close:hover { background: var(--border); color: var(--fg); }
+
+  #main { flex: 1; min-height: 0; display: flex; }
+  #editor-host { flex: 1; min-height: 0; min-width: 0; display: flex; }
+  #editor-host .cm-editor { flex: 1; }
+
+  /* ---- sidebar file explorer ---- */
+  #sidebar {
+    width: 232px; flex: none; display: flex; flex-direction: column;
+    background: color-mix(in srgb, var(--toolbar) 55%, var(--bg));
+    border-right: 1px solid var(--border); overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+  }
+  #sidebar[hidden] { display: none; }
+  /* No border-bottom here: it sat at a height nothing on the editor side
+     matched, so the top-left junction showed three misaligned lines. */
+  #sidebar-head {
+    display: flex; align-items: center; gap: 6px; flex: none;
+    padding: 12px 8px 6px 12px;
+  }
+  #sidebar-root {
+    flex: 1; min-width: 0; font: 700 11px/1.2 -apple-system, system-ui, sans-serif;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #sidebar-openbtn {
+    flex: none; border: 1px solid var(--border-strong); border-radius: 6px;
+    background: var(--bg); color: var(--muted); cursor: pointer;
+    font: 500 10.5px/1 -apple-system, system-ui, sans-serif; padding: 4px 7px;
+  }
+  #sidebar-openbtn:hover { background: var(--hover); color: var(--fg); }
+  #sidebar-tree { flex: 1; overflow: auto; padding: 4px 0 12px; }
+  .sidebar-empty {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 40px 16px; text-align: center; color: var(--muted);
+    font: 500 12px/1.5 -apple-system, system-ui, sans-serif;
+  }
+  .sidebar-empty button {
+    border: 1px solid var(--border-strong); border-radius: 7px; background: var(--bg);
+    color: var(--fg); cursor: pointer; font: 500 12px/1 inherit; padding: 7px 12px;
+  }
+  .sidebar-empty button:hover { background: var(--hover); }
+  .tree-row {
+    display: flex; align-items: center; gap: 4px; height: 26px; cursor: default;
+    font: 500 12.5px/1 -apple-system, system-ui, sans-serif; color: var(--fg);
+    white-space: nowrap; overflow: hidden; padding-right: 8px;
+  }
+  .tree-row:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .tree-row.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+  .tree-row .tw { width: 12px; flex: none; text-align: center; color: var(--muted); font-size: 9px; }
+  .tree-row .ti { flex: none; opacity: .8; }
+  .tree-row .tn { overflow: hidden; text-overflow: ellipsis; }
+  .tree-row.dir { color: var(--fg); }
+
+  /* ---- insert dropdown menu ---- */
+  .menu {
+    position: fixed; z-index: 100; min-width: 172px;
+    background: var(--bg); border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 5px; box-shadow: 0 10px 30px rgba(0,0,0,.16);
+    font: 500 13px/1 -apple-system, system-ui, sans-serif;
+  }
+  .menu[hidden] { display: none; }
+  .menu button {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    background: transparent; border: none; border-radius: 6px;
+    padding: 7px 10px; cursor: pointer; color: var(--fg); text-align: left; font: inherit;
+  }
+  .menu button:hover { background: var(--hover); }
+  .menu .mi {
+    width: 16px; text-align: center; color: var(--muted);
+    font-size: 12px; flex: none;
+  }
+  .menu .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--d); flex: none; margin: 0 3px; }
+  .menu-sep { height: 1px; background: var(--border); margin: 5px 4px; }
+  .menu-label { font-size: 11px; color: var(--muted); padding: 5px 10px 3px; }
+
+  /* ---- 그림판 팝업 ---- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 200; display: flex;
+    align-items: center; justify-content: center;
+    background: rgba(30,28,24,.38); backdrop-filter: blur(2px);
+  }
+  .overlay[hidden] { display: none; }
+  .draw-panel {
+    background: var(--toolbar); border: 1px solid var(--border-strong);
+    border-radius: 14px; padding: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    display: flex; flex-direction: column; gap: 10px; max-width: 94vw;
+  }
+  .draw-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .draw-colors { display: flex; gap: 5px; }
+  .draw-colors .sw {
+    width: 22px; height: 22px; border-radius: 50%; padding: 0; cursor: pointer;
+    background: var(--c); border: 2px solid transparent; box-shadow: 0 0 0 1px var(--border) inset;
+  }
+  .draw-colors .sw.active { border-color: var(--fg); }
+  .draw-sizes { display: flex; gap: 3px; }
+  .dtool, .draw-sizes button {
+    font: 500 12px/1 -apple-system, system-ui, sans-serif; color: var(--fg);
+    background: var(--bg); border: 1px solid var(--border-strong);
+    border-radius: 7px; padding: 7px 10px; cursor: pointer; white-space: nowrap;
+  }
+  .dtool:hover, .draw-sizes button:hover { background: var(--hover); }
+  .draw-sizes button.active, #draw-eraser.active {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+  }
+  .dtool.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .dtool.primary:hover { filter: brightness(1.05); background: var(--accent); }
+  .draw-tools .spacer { flex: 1; }
+  .draw-surface {
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; line-height: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 22px 22px; background-position: -1px -1px; background-color: #fff;
+  }
+  #draw-canvas { display: block; touch-action: none; cursor: crosshair; max-width: 88vw; height: auto; }
+
+
+  /* Off-screen container used only to build the PDF export. */
+  #export-doc { position: absolute; left: -99999px; top: 0; width: 820px; }
+
+  /* Widget content must not inherit CodeMirror's pre-wrap: the \n text nodes in
+     generated HTML (e.g. between a table's thead/tbody) would render as gaps. */
+  .qv-block { white-space: normal; }
+
+  /* Editor block-math widget layout (sizing comes from doc.css .math rules). */
+  .qv-math-block { text-align: center; margin: 2px 0; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(10px);
+    background: #2b2b26; color: #f4f2e8; padding: 9px 16px; border-radius: 9px;
+    font: 13px/1.4 var(--serif); opacity: 0; transition: opacity .2s, transform .2s;
+    pointer-events: none; z-index: 50; max-width: 80vw; box-shadow: 0 6px 24px rgba(0,0,0,.25);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+  <header>
+    <!-- Fixed to the sidebar's width so the tab strip starts exactly at the
+         sidebar/editor split line (tabs sit above the editor, VSCode-style). -->
+    <div id="tb-left">
+    <button class="tbtn" id="btn-new" data-tip="새로 만들기  ⌘N">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 1.75H4.25A1.25 1.25 0 0 0 3 3v10a1.25 1.25 0 0 0 1.25 1.25h7.5A1.25 1.25 0 0 0 13 13V5.75L9 1.75Z"/>
+        <path d="M8.75 2v3.5h3.5"/><path d="M8 8v3.2M6.4 9.6h3.2"/>
+      </svg>
+    </button>
+    <button class="tbtn" id="btn-open" data-tip="열기  ⌘O">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1.75 4.25h4.1l1.2 1.5h7.2v6.5a1 1 0 0 1-1 1H1.75a1 1 0 0 1-1-1V4.25Z"/>
+        <path d="M.9 6.75h14.2"/>
+      </svg>
+    </button>
+    <button class="tbtn" id="btn-save" data-tip="저장  ⌘S">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M2.75 2.25h8.1L13.25 4.6V13a1 1 0 0 1-1 1H3.75a1 1 0 0 1-1-1V3.25a1 1 0 0 1 1-1Z"/>
+        <path d="M5 2.5v3h5v-3"/><path d="M5 9.5h6"/><path d="M5 11.5h6"/>
+      </svg>
+    </button>
+    <div class="tsep"></div>
+    <button class="tbtn" id="btn-insert" data-tip="삽입 — 콜아웃·표·탭셋">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1.75" y="2.25" width="12.5" height="4" rx="1"/>
+        <path d="M1.75 9.75h7"/><path d="M12 8.25v5M9.5 10.75h5"/>
+      </svg>
+    </button>
+    <div class="tsep"></div>
+    <button class="tbtn" id="btn-pdf" data-tip="출력 (인쇄/PDF)  ⌘P">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M8 1.75v7.5"/><path d="M5.25 6.5 8 9.25 10.75 6.5"/>
+        <path d="M2.75 10.5V13a1 1 0 0 0 1 1h8.5a1 1 0 0 0 1-1v-2.5"/>
+      </svg>
+    </button>
+    </div>
+    <div id="tabs"></div>
+    <button id="reload-btn" title="외부에서 파일이 바뀌었습니다 — 편집 내용을 버리고 다시 불러옵니다">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.7 2.5v3h-3"/></svg>
+      외부 변경
+    </button>
+    <span id="status"></span>
+    <button class="tbtn" id="btn-help" data-tip="도움말">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="8" cy="8" r="6.25"/><path d="M6.3 6.1a1.75 1.75 0 1 1 2.4 1.63c-.5.2-.7.5-.7 1.02V9.2"/><path d="M8 11.4h.01"/>
+      </svg>
+    </button>
+  </header>
+  <div id="main">
+    <aside id="sidebar">
+      <div id="sidebar-head">
+        <span id="sidebar-root">탐색기</span>
+      </div>
+      <div id="sidebar-tree"></div>
+    </aside>
+    <div id="editor-host"></div>
+  </div>
+  <div id="insert-menu" class="menu" hidden>
+    <button data-snip="table"><span class="mi">▦</span>표</button>
+    <button data-snip="tabset"><span class="mi">▤</span>탭셋</button>
+    <button data-snip="code"><span class="mi">&lt;/&gt;</span>코드 블록</button>
+    <button data-snip="draw"><span class="mi">✎</span>그림 (낙서)</button>
+    <div class="menu-sep"></div>
+    <div class="menu-label">콜아웃</div>
+    <button data-snip="callout-note"><span class="dot" style="--d:var(--co-note)"></span>노트</button>
+    <button data-snip="callout-tip"><span class="dot" style="--d:var(--co-tip)"></span>팁</button>
+    <button data-snip="callout-warning"><span class="dot" style="--d:var(--co-warning)"></span>경고</button>
+    <button data-snip="callout-caution"><span class="dot" style="--d:var(--co-caution)"></span>주의</button>
+    <button data-snip="callout-important"><span class="dot" style="--d:var(--co-important)"></span>중요</button>
+  </div>
+
+  <!-- 그림판 팝업 -->
+  <div id="draw-modal" class="overlay" hidden>
+    <div class="draw-panel">
+      <div class="draw-tools">
+        <div class="draw-colors" id="draw-colors">
+          <button class="sw" data-color="#2b2b26" style="--c:#2b2b26"></button>
+          <button class="sw" data-color="#ff6f61" style="--c:#ff6f61"></button>
+          <button class="sw" data-color="#2780e3" style="--c:#2780e3"></button>
+          <button class="sw" data-color="#3fb618" style="--c:#3fb618"></button>
+          <button class="sw" data-color="#f0ad4e" style="--c:#f0ad4e"></button>
+          <button class="sw" data-color="#ff0039" style="--c:#ff0039"></button>
+        </div>
+        <div class="draw-sizes" id="draw-sizes">
+          <button data-size="2">가늘게</button>
+          <button data-size="5">보통</button>
+          <button data-size="11">굵게</button>
+        </div>
+        <button id="draw-eraser" class="dtool">지우개</button>
+        <button id="draw-undo" class="dtool">되돌리기</button>
+        <button id="draw-clear" class="dtool">전체 지우기</button>
+        <span class="spacer"></span>
+        <button id="draw-cancel" class="dtool">취소</button>
+        <button id="draw-insert" class="dtool primary">삽입</button>
+      </div>
+      <div class="draw-surface"><canvas id="draw-canvas" width="880" height="560"></canvas></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+  <div id="export-doc" class="qdoc" aria-hidden="true"></div>
+
+<script>
+// ── Tauri adapter ──────────────────────────────────────────────────────────
+// When running inside the Tauri (Rust) shell, expose the same window.pywebview
+// .api surface the frontend already uses, mapped to Rust `invoke` commands.
+// Inert under pywebview (window.__TAURI__ is undefined there).
+if (window.__TAURI__) {
+  const invoke = window.__TAURI__.core.invoke;
+  const listen = window.__TAURI__.event.listen;
+  window.pywebview = { api: {
+    get_state: () => invoke("get_state"),
+    read_path: (path) => invoke("read_path", { path }),
+    help_doc: () => invoke("help_doc"),
+    list_dir: (path) => invoke("list_dir", { path }),
+    open_file: () => invoke("open_file"),
+    open_folder: () => invoke("open_folder"),
+    set_active: (path) => invoke("set_active", { path: path || "" }),
+    set_folder: (path) => invoke("set_folder", { path: path || "" }),
+    track: (paths) => invoke("track", { paths: paths || [] }),
+    poll: () => invoke("poll"),
+    save: (text) => invoke("save_doc", { text }),
+    save_as: (text) => invoke("save_as", { text }),
+    resolve_asset: (src) => invoke("resolve_asset", { src }),
+    paste_image: () => invoke("paste_image"),
+    save_drawing: (dataUrl) => invoke("save_drawing", { dataurl: dataUrl }),
+    open_url: (url) => invoke("open_url", { url }),
+    open_export: (html) => invoke("open_export", { html }),
+  } };
+  // Backend pushes opened files/folders from a second launch.
+  listen("qv-open", (e) => window.QV && window.QV.openPath(e.payload));
+  listen("qv-folder", (e) => window.QV && window.QV.openFolder && window.QV.openFolder(e.payload));
+  listen("qv-new", () => window.QV && window.QV.newBlank && window.QV.newBlank());
+  // Signal readiness the same way pywebview does.
+  window.addEventListener("DOMContentLoaded", () => setTimeout(() => window.dispatchEvent(new Event("pywebviewready")), 0));
+}
+</script>
+<script src="vendor/cm6/editor.bundle.js"></script>
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/highlight.min.js"></script>
+<script>
+// Same engine + config shape as the real blog (Quarto): CHTML output with
+// TeX woff fonts; math arrives pre-wrapped in pandoc-style spans, so only
+// \( \) / \[ \] delimiters are needed.
+window.MathJax = {
+  tex: { inlineMath: [["\\(", "\\)"]], displayMath: [["\\[", "\\]"]] },
+  chtml: { fontURL: "vendor/mathjax-woff" },
+  startup: { typeset: false },
+  // WKWebView fails to clip the hidden assistive-MathML copy, so every
+  // formula rendered twice in the app. Disable it outright.
+  options: { enableAssistiveMml: false, enableMenu: false },
+};
+// MathJax (1.3MB) is loaded lazily — only the first time a document actually
+// contains math — so math-free documents start up much faster.
+let _mathjaxPromise = null;
+function ensureMathJax() {
+  if (_mathjaxPromise) return _mathjaxPromise;
+  _mathjaxPromise = new Promise((resolve) => {
+    if (window.MathJax && window.MathJax.typesetPromise) return resolve();
+    const s = document.createElement("script");
+    s.src = "vendor/tex-chtml-full.js"; s.id = "mathjax-script";
+    s.onload = () => { (function wait() {
+      if (window.MathJax && window.MathJax.typesetPromise) resolve();
+      else setTimeout(wait, 20);
+    })(); };
+    s.onerror = () => resolve();
+    document.head.appendChild(s);
+  });
+  return _mathjaxPromise;
+}
+function elementHasMath(el) {
+  return !!el && ((el.classList && el.classList.contains("math")) || !!el.querySelector(".math"));
+}
+</script>
+<script>
+const exportDoc = document.getElementById("export-doc");
+const statusEl  = document.getElementById("status");
+const reloadBtn = document.getElementById("reload-btn");
+marked.setOptions({ gfm: true, breaks: false });
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ============ Markdown → HTML (callouts, tabsets) — shared by widgets & export ============ */
+const CALLOUT_ICONS = {
+  note: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm9-3a1 1 0 11-2 0 1 1 0 012 0zM7.25 7.25a.75.75 0 000 1.5h.25v2.5a.75.75 0 001.5 0v-3a.75.75 0 00-.75-.75h-1z"/></svg>',
+  tip: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a5.53 5.53 0 00-3.594 9.727c.457.396.87.973.87 1.573v.7a.75.75 0 00.75.75h4.148a.75.75 0 00.75-.75v-.7c0-.6.413-1.177.87-1.573A5.53 5.53 0 008 0zM5.75 14.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg>',
+  warning: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0114.082 15H1.918a1.75 1.75 0 01-1.543-2.575L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm1 6a1 1 0 10-2 0 1 1 0 002 0z"/></svg>',
+  caution: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0114.082 15H1.918a1.75 1.75 0 01-1.543-2.575L6.457 1.047zM8 5a.75.75 0 00-.75.75v2.5a.75.75 0 001.5 0v-2.5A.75.75 0 008 5zm1 6a1 1 0 10-2 0 1 1 0 002 0z"/></svg>',
+  important: '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm9 3a1 1 0 11-2 0 1 1 0 012 0zM8 4a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 4z"/></svg>',
+};
+const CALLOUT_TITLES = { note: "Note", tip: "Tip", warning: "Warning", caution: "Caution", important: "Important" };
+
+function wrapDiv(spec, innerHtml) {
+  const classes = [...spec.matchAll(/\.([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
+  const titleM = spec.match(/title\s*=\s*["']([^"']*)["']/);
+  const callout = classes.find((c) => c.startsWith("callout-"));
+  if (callout) {
+    const type = callout.slice("callout-".length);
+    const kind = CALLOUT_ICONS[type] ? type : "note";
+    const title = titleM ? titleM[1] : CALLOUT_TITLES[kind];
+    return `<div class="callout callout-${escapeHtml(kind)}"><div class="callout-header">${CALLOUT_ICONS[kind]}<span>${escapeHtml(title)}</span></div><div class="callout-body">${innerHtml}</div></div>`;
+  }
+  return `<div class="qdiv ${escapeHtml(classes.join(" "))}">${innerHtml}</div>`;
+}
+
+// marked mangles TeX (underscores become <em>, etc.), so math segments are
+// swapped for inert placeholders before parsing and restored afterwards.
+// Code (fenced + inline) is shielded first so `$` inside code is untouched.
+function parseMarkdownProtected(src) {
+  const code = [], math = [];
+  let masked = src
+    .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, (m) => `QVCODE${code.push(m) - 1}QVCODE`)
+    .replace(/(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/g, (m) => `QVCODE${code.push(m) - 1}QVCODE`);
+  masked = masked
+    .replace(/\$\$([\s\S]+?)\$\$/g, (m) => `QVMATH${math.push(m) - 1}QVMATH`)
+    .replace(/(?<!\$)\$(?!\s)([^$\n]+?)(?<!\s)\$(?!\$)/g, (m) => `QVMATH${math.push(m) - 1}QVMATH`);
+  masked = masked.replace(/QVCODE(\d+)QVCODE/g, (_, i) => code[+i]);
+  let html = marked.parse(masked);
+  // Restore math exactly the way pandoc/Quarto emits it on the blog:
+  // <span class="math inline">\(tex\)</span> / <span class="math display">\[tex\]</span>
+  html = html.replace(/QVMATH(\d+)QVMATH/g, (_, i) => {
+    const m = math[+i];
+    if (m.startsWith("$$")) return '<span class="math display">\\[' + escapeHtml(m.slice(2, -2)) + "\\]</span>";
+    return '<span class="math inline">\\(' + escapeHtml(m.slice(1, -1)) + "\\)</span>";
+  });
+  return html;
+}
+
+let tabsetSeq = 0;
+function mdToHtml(md) { tabsetSeq = 0; const lines = md.split(/\r?\n/); return renderRange(lines, 0, lines.length); }
+function renderRange(lines, start, end) {
+  let html = "", i = start, buf = [];
+  const flush = () => { if (buf.length) { html += parseMarkdownProtected(buf.join("\n")); buf = []; } };
+  while (i < end) {
+    const open = lines[i].match(/^(:{3,})\s*\{(.+?)\}\s*$/);
+    if (open) {
+      let depth = 1, j = i + 1;
+      for (; j < end; j++) {
+        if (/^:{3,}\s*\{.+?\}\s*$/.test(lines[j])) depth++;
+        else if (/^:{3,}\s*$/.test(lines[j])) { if (--depth === 0) break; }
+      }
+      flush();
+      const classes = [...open[2].matchAll(/\.([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
+      if (classes.includes("panel-tabset")) html += buildTabset(lines, i + 1, j);
+      else html += wrapDiv(open[2], renderRange(lines, i + 1, j));
+      i = j + 1;
+    } else { buf.push(lines[i++]); }
+  }
+  flush();
+  return html;
+}
+function buildTabset(lines, start, end) {
+  let depth = 0, minLevel = 7;
+  for (let k = start; k < end; k++) {
+    const l = lines[k];
+    if (/^:{3,}\s*\{.+?\}\s*$/.test(l)) { depth++; continue; }
+    if (/^:{3,}\s*$/.test(l)) { if (depth > 0) depth--; continue; }
+    if (depth === 0) { const h = l.match(/^(#{1,6})\s+/); if (h) minLevel = Math.min(minLevel, h[1].length); }
+  }
+  if (minLevel === 7) return wrapDiv("{.panel-tabset}", renderRange(lines, start, end));
+  const tabs = []; let cur = null; depth = 0;
+  for (let k = start; k < end; k++) {
+    const l = lines[k];
+    const isOpen = /^:{3,}\s*\{.+?\}\s*$/.test(l);
+    const isClose = /^:{3,}\s*$/.test(l);
+    if (depth === 0 && !isOpen) {
+      const h = l.match(/^(#{1,6})\s+(.*)$/);
+      if (h && h[1].length === minLevel) { cur = { title: h[2].trim(), body: [] }; tabs.push(cur); continue; }
+    }
+    if (cur) cur.body.push(l);
+    if (isOpen) depth++; else if (isClose && depth > 0) depth--;
+  }
+  const id = "ts" + (tabsetSeq++);
+  let bar = "", panels = "";
+  tabs.forEach((tab, idx) => {
+    const a = idx === 0 ? " active" : "";
+    bar += `<button class="tab-btn${a}" data-ts="${id}" data-idx="${idx}">${escapeHtml(tab.title)}</button>`;
+    panels += `<div class="tab-panel${a}" data-ts="${id}" data-idx="${idx}">${renderRange(tab.body, 0, tab.body.length)}</div>`;
+  });
+  return `<div class="tabset"><div class="tab-bar">${bar}</div>${panels}</div>`;
+}
+function splitFrontMatter(text) {
+  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+  if (!m) return { fm: null, body: text };
+  const fm = {};
+  for (const line of m[1].split(/\r?\n/)) { const kv = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/); if (kv) fm[kv[1].toLowerCase()] = kv[2].replace(/^["']|["']$/g, "").trim(); }
+  return { fm, body: text.slice(m[0].length) };
+}
+
+/* ============ Host callbacks used by the editor's live-preview widgets ============ */
+async function resolveAsset(src) { try { return await window.pywebview.api.resolve_asset(src); } catch (_) { return null; } }
+// MathJax must not typeset a detached node: it can't measure font metrics there
+// and emits SVGs with NaN dimensions that render enormous. Editor widgets call
+// this from toDOM() *before* CodeMirror attaches the node, so wait (bounded)
+// for the element to be connected first.
+function whenConnected(el) {
+  return new Promise((resolve) => {
+    let tries = 0;
+    (function check() {
+      if (el.isConnected || ++tries > 120) resolve();
+      else requestAnimationFrame(check);
+    })();
+  });
+}
+async function typeset(el) {
+  await whenConnected(el);
+  if (!el.isConnected) return;
+  if (!elementHasMath(el)) return;   // no math → don't pull in MathJax
+  try { await ensureMathJax(); if (MathJax.typesetPromise) await MathJax.typesetPromise([el]); } catch (_) {}
+}
+// Synchronous math render for editor widgets. When MathJax is already loaded,
+// convert `tex` to its final CHTML *synchronously* and put it in `el`. This
+// matters for the live editor: an async render leaves the widget at the
+// placeholder ("\(x^2\)") width while CodeMirror measures the caret position,
+// which lands the caret at that stale, wider spot — the "big gap after inline
+// math" bug. Rendering synchronously gives the widget its final width up front,
+// so the caret is placed correctly. Returns false if MathJax isn't ready yet
+// (first formula) — the caller then falls back to the async path.
+function typesetSync(el, tex, display) {
+  if (!(window.MathJax && MathJax.tex2chtml && MathJax.startup && MathJax.startup.document)) {
+    ensureMathJax();  // warm it up so later widgets can render synchronously
+    return false;
+  }
+  try {
+    const node = MathJax.tex2chtml(String(tex), { display: !!display });
+    el.textContent = "";
+    el.appendChild(node);
+    MathJax.startup.document.updateDocument();  // (re)emit the CHTML glyph stylesheet
+    return true;
+  } catch (_) { return false; }
+}
+async function enhance(el) {
+  el.querySelectorAll("pre code").forEach((c) => { try { hljs.highlightElement(c); } catch (_) {} });
+  const imgs = el.querySelectorAll("img");
+  for (const img of imgs) {
+    const src = img.getAttribute("src") || "";
+    if (!src || /^(https?:|data:)/.test(src)) continue;
+    const uri = await resolveAsset(src);
+    if (uri) img.src = uri;
+    else img.replaceWith(Object.assign(document.createElement("span"), { className: "img-missing", textContent: "🖼️ 이미지를 찾을 수 없음: " + src }));
+  }
+}
+// Wrap block (callout/tabset/table/code) HTML in .qdoc so doc.css styles it.
+function renderBlock(src) { return '<div class="qdoc">' + mdToHtml(src) + "</div>"; }
+
+// YAML front matter → Quarto-style title block (AUTHOR / PUBLISHED columns).
+function formatFmDate(s) {
+  const m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/) || String(s).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!m) return s;
+  const [y, mo, d] = m[0].includes("/") ? [+m[3], +m[1], +m[2]] : [+m[1], +m[2], +m[3]];
+  const names = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  return `${names[mo - 1]} ${d}, ${y}`;
+}
+function renderFrontmatter(src) {
+  const fm = {};
+  for (const line of src.split(/\r?\n/)) {
+    const kv = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
+    if (kv) fm[kv[1].toLowerCase()] = kv[2].replace(/^["']|["']$/g, "").trim();
+  }
+  const cols = [];
+  if (fm.author) cols.push('<div><div class="fm-label">Author</div><div class="fm-value">' + escapeHtml(fm.author) + "</div></div>");
+  if (fm.date) cols.push('<div><div class="fm-label">Published</div><div class="fm-value">' + escapeHtml(formatFmDate(fm.date)) + "</div></div>");
+  return '<div class="qdoc"><div class="frontmatter">'
+    + '<div class="title">' + escapeHtml(fm.title || "(제목 없음)") + "</div>"
+    + (cols.length ? '<div class="fm-meta">' + cols.join("") + "</div>" : "")
+    + "</div></div>";
+}
+
+/* ============ Export (headless render → browser print) ============ */
+let imagesReady = Promise.resolve();
+function renderInto(container, text) {
+  const { fm, body } = splitFrontMatter(text);
+  container.innerHTML = "";
+  if (fm && fm.title) {
+    const fmEl = document.createElement("div"); fmEl.className = "frontmatter";
+    const tt = document.createElement("div"); tt.className = "title"; tt.textContent = fm.title; fmEl.appendChild(tt);
+    const meta = [fm.author, fm.date].filter(Boolean).join(" · ");
+    if (meta) { const mEl = document.createElement("div"); mEl.className = "meta"; mEl.textContent = meta; fmEl.appendChild(mEl); }
+    container.appendChild(fmEl);
+  }
+  const host = document.createElement("div"); host.innerHTML = mdToHtml(body); container.appendChild(host);
+  imagesReady = enhance(container);
+  typeset(container);
+}
+async function doPdf() {
+  renderInto(exportDoc, ed.getValue());
+  await imagesReady;
+  try {
+    if (elementHasMath(exportDoc)) { await ensureMathJax(); if (MathJax.typesetPromise) await MathJax.typesetPromise([exportDoc]); }
+  } catch (_) {}
+  const clone = exportDoc.cloneNode(true);
+  clone.querySelectorAll(".tabset").forEach((ts) => {
+    const titles = [...ts.querySelectorAll(".tab-bar .tab-btn")].map((b) => b.textContent);
+    const panels = [...ts.querySelectorAll(".tab-panel")];
+    const frag = document.createDocumentFragment();
+    panels.forEach((p, i) => {
+      const sec = document.createElement("div"); sec.className = "tab-section";
+      const h = document.createElement("div"); h.className = "tab-section-title"; h.textContent = titles[i] || ("Tab " + (i + 1));
+      sec.appendChild(h); p.classList.add("active"); sec.appendChild(p); frag.appendChild(sec);
+    });
+    ts.replaceWith(frag);
+  });
+  const { fm } = splitFrontMatter(ed.getValue());
+  const title = (fm && fm.title) || activeTitle || "document";
+  // CHTML math is styled by a stylesheet MathJax injects at runtime — the
+  // export page must carry a copy or every formula collapses. The glyph rules
+  // are added via CSSOM insertRule, which outerHTML/textContent do NOT
+  // reflect, so serialize the live cssRules instead. Absolute font URLs are
+  // rewritten back to relative so they resolve from the exported file.
+  let mjxCss = "";
+  for (const ss of document.styleSheets) {
+    const id = (ss.ownerNode && ss.ownerNode.id) || "";
+    if (!/^MJX/.test(id)) continue;
+    try { mjxCss += [...ss.cssRules].map((r) => r.cssText).join("\n"); } catch (_) {}
+  }
+  mjxCss = mjxCss.split(location.origin + "/").join("");
+  const mjxStyles = mjxCss ? `<style id="MJX-CHTML-styles">${mjxCss}</style>` : "";
+  const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>`
+    + `<link rel="stylesheet" href="vendor/github.min.css"><link rel="stylesheet" href="doc.css"><link rel="stylesheet" href="print.css">${mjxStyles}</head>`
+    + `<body><article class="doc-print qdoc">${clone.innerHTML}</article></body></html>`;
+  try {
+    const r = await window.pywebview.api.open_export(html);
+    if (r && r.opened) flash("브라우저가 열렸습니다 · ⌘P → PDF로 저장");
+    else if (r && r.error) flash("내보내기 실패: " + r.error);
+  } catch (e) { flash("내보내기 실패: " + e); }
+}
+
+/* ============ Editor state & tabs ============ */
+// Each open document is a tab carrying its own CodeMirror EditorState (so undo
+// history and cursor survive tab switches). `ed` is the single shared view.
+let ed = null;
+let loading = false;
+let tabs = [];            // {id, path, title, state, savedText, scrollTop, external, pending}
+let activeId = null;
+let seq = 0;
+let activeTitle = "—";    // active document title, used by the PDF export
+const pendingOpens = [];  // paths delivered before the editor finished booting
+
+const api = () => window.pywebview.api;
+const activeTab = () => tabs.find((t) => t.id === activeId) || null;
+function currentTextOf(t) { return t.id === activeId ? ed.getValue() : t.state.doc.toString(); }
+function isDirty(t) { return currentTextOf(t) !== t.savedText; }
+
+// Build a fresh EditorState with the cursor parked just after the YAML front
+// matter, so the title block renders immediately instead of showing raw YAML.
+function freshStateParked(text) {
+  let s = ed.freshState(text);
+  const m = text.match(/^---\r?\n[\s\S]*?\r?\n---(\r?\n)?/);
+  const pos = Math.min(m ? m[0].length : 0, text.length);
+  return s.update({ selection: { anchor: pos }, scrollIntoView: false }).state;
+}
+
+function renderTabs() {
+  const host = document.getElementById("tabs");
+  host.innerHTML = "";
+  for (const t of tabs) {
+    const el = document.createElement("div");
+    el.className = "tab" + (t.id === activeId ? " active" : "")
+      + (isDirty(t) ? " dirty" : "") + (t.external ? " external" : "");
+    el.dataset.id = t.id;
+    el.title = t.path || t.title;
+    const name = document.createElement("span");
+    name.className = "tab-name"; name.textContent = t.title;
+    el.appendChild(name);
+    const close = document.createElement("button");
+    close.className = "tab-close"; close.textContent = "×"; close.title = "닫기 (⌘W)";
+    close.onclick = (e) => { e.stopPropagation(); closeTab(t.id); };
+    el.appendChild(close);
+    el.onmousedown = (e) => { if (e.target === close) return; switchTo(t.id); };
+    host.appendChild(el);
+  }
+}
+// Cheap update of just the active tab's dirty dot (avoids a full rebuild per keystroke).
+function refreshActiveDirty() {
+  const t = activeTab(); if (!t) return;
+  const el = document.querySelector('.tab[data-id="' + t.id + '"]');
+  if (el) el.classList.toggle("dirty", isDirty(t));
+}
+
+function switchTo(id) {
+  if (id === activeId) { ed.focus(); return; }
+  const cur = activeTab();
+  if (cur) { cur.state = ed.getState(); cur.scrollTop = ed.view.scrollDOM.scrollTop; }
+  const t = tabs.find((x) => x.id === id);
+  if (!t) return;
+  activeId = id;
+  loading = true; ed.setState(t.state); loading = false;
+  activeTitle = t.title;
+  try { api().set_active(t.path || ""); } catch (_) {}
+  reloadBtn.classList.toggle("show", !!t.external);
+  statusEl.textContent = t.external ? "⚠ 외부에서 파일이 바뀜" : "";
+  renderTabs();
+  if (typeof markActiveInTree === "function") markActiveInTree();
+  const top = t.scrollTop || 0;
+  requestAnimationFrame(() => { ed.view.scrollDOM.scrollTop = top; });
+  ed.focus();
+}
+
+function addTab(st) {
+  if (st.path) { const ex = tabs.find((t) => t.path === st.path); if (ex) { switchTo(ex.id); return ex; } }
+  const t = {
+    id: ++seq, path: st.path || "", title: st.title,
+    state: freshStateParked(st.text), savedText: st.text,
+    scrollTop: 0, external: false, pending: null,
+  };
+  tabs.push(t);
+  syncTrack();
+  switchTo(t.id);
+  return t;
+}
+
+function closeTab(id) {
+  const idx = tabs.findIndex((t) => t.id === id);
+  if (idx < 0) return;
+  const t = tabs[idx];
+  if (isDirty(t) && !confirm("저장되지 않은 변경사항이 있습니다:\n" + t.title + "\n\n닫을까요?")) return;
+  tabs.splice(idx, 1);
+  if (activeId === id) {
+    activeId = null;  // so switchTo doesn't try to persist the removed tab
+    const next = tabs[idx] || tabs[idx - 1] || null;
+    if (next) switchTo(next.id);
+    else openWelcome();
+  } else {
+    renderTabs();
+  }
+  syncTrack();
+}
+
+async function openWelcome() {
+  try { addTab(await api().read_path("")); } catch (_) {}
+}
+
+function syncTrack() {
+  try { api().track(tabs.map((t) => t.path).filter(Boolean)); } catch (_) {}
+}
+
+// Starter document for 새로 만들기 — an untitled tab (no file until first save).
+const NEW_DOC = '---\ntitle: "제목 없음"\n---\n\n';
+function doNew() { addTab({ text: NEW_DOC, title: "제목 없음", path: "" }); }
+
+/* ============ Insert blocks (Quarto syntax) ============ */
+// A « » token marks where the cursor lands after insertion (stripped before insert).
+const CURSOR = "\u00ab\u00bb";
+const SNIPPETS = {
+  "table": "| 열 1 | 열 2 |\n| --- | --- |\n| «» |  |\n",
+  "tabset": "::: {.panel-tabset}\n\n## 탭 1\n\n«»\n\n## 탭 2\n\n\n:::\n",
+  "code": "```python\n«»\n```\n",
+  "callout-note": "::: {.callout-note}\n«»\n:::\n",
+  "callout-tip": "::: {.callout-tip}\n«»\n:::\n",
+  "callout-warning": "::: {.callout-warning}\n«»\n:::\n",
+  "callout-caution": "::: {.callout-caution}\n«»\n:::\n",
+  "callout-important": "::: {.callout-important}\n«»\n:::\n",
+};
+function insertBlock(key) {
+  const snip = SNIPPETS[key]; if (!snip || !ed) return;
+  const view = ed.view;
+  const sel = view.state.selection.main;
+  // Block markup needs to start on its own line (blank line above if mid-text).
+  const line = view.state.doc.lineAt(sel.from);
+  const before = view.state.doc.sliceString(line.from, sel.from);
+  const lead = before.trim() === "" ? "" : "\n\n";
+  const marker = snip.indexOf(CURSOR);
+  const clean = snip.replace(CURSOR, "");
+  const caret = sel.from + lead.length + (marker >= 0 ? marker : clean.length);
+  view.dispatch({
+    changes: { from: sel.from, to: sel.to, insert: lead + clean },
+    selection: { anchor: caret },
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
+async function doOpen() {
+  try { const s = await api().open_file(); if (s) { addTab(s); maybeRevealFolder(s.path); } }
+  catch (e) { console.error("open failed", e); }
+}
+async function doSave() {
+  const t = activeTab(); if (!t) return;
+  const text = ed.getValue();
+  try {
+    const r = await api().save(text);
+    if (r && r.saved) {
+      t.savedText = text; t.path = r.path; t.title = r.title;
+      t.external = false; t.pending = null; activeTitle = r.title;
+      statusEl.textContent = ""; reloadBtn.classList.remove("show");
+      syncTrack(); renderTabs();
+      flash("저장됨 — " + r.title);
+    } else if (r && r.error) flash("저장 실패: " + r.error);
+  } catch (e) { flash("저장 실패: " + e); }
+}
+
+/* ============ Sidebar file explorer ============ */
+const sidebarEl = document.getElementById("sidebar");
+// The folder currently shown in the explorer. Opening a file auto-reveals its
+// folder here (only if none is open yet), so there's no separate "open folder"
+// step for the common case — you just 열기 a file and its folder appears.
+let sidebarFolder = null;
+function maybeRevealFolder(path) {
+  if (!path || sidebarFolder) return;
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (i > 0) openFolder(path.slice(0, i));
+}
+function markActiveInTree() {
+  const t = activeTab();
+  const p = t ? t.path : "";
+  document.querySelectorAll("#sidebar-tree .tree-row.file").forEach((r) => {
+    r.classList.toggle("active", !!p && r.dataset.path === p);
+  });
+}
+function treeIcon(isDir) {
+  return isDir
+    ? '<svg class="ti" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 4.5 1.5 12.5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H7.5l-1.3-1.5H2.5a1 1 0 0 0-1 1Z"/></svg>'
+    : '<svg class="ti" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3.5 1.5h6l3 3v9a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1Z"/><path d="M9.3 1.6V4.7h3.1"/></svg>';
+}
+function makeTreeNode(entry, depth) {
+  const wrap = document.createElement("div");
+  const row = document.createElement("div");
+  row.className = "tree-row " + (entry.is_dir ? "dir" : "file");
+  row.dataset.path = entry.path;
+  row.style.paddingLeft = 6 + depth * 13 + "px";
+  const tw = document.createElement("span"); tw.className = "tw"; tw.textContent = entry.is_dir ? "▸" : "";
+  const name = document.createElement("span"); name.className = "tn"; name.textContent = entry.name;
+  row.appendChild(tw);
+  row.insertAdjacentHTML("beforeend", treeIcon(entry.is_dir));
+  row.appendChild(name);
+  wrap.appendChild(row);
+  if (entry.is_dir) {
+    const kids = document.createElement("div"); kids.hidden = true; wrap.appendChild(kids);
+    let loaded = false;
+    row.onclick = async () => {
+      if (!kids.hidden) { kids.hidden = true; tw.textContent = "▸"; return; }
+      if (!loaded) {
+        try {
+          const sub = await api().list_dir(entry.path);
+          for (const c of sub.entries || []) kids.appendChild(makeTreeNode(c, depth + 1));
+          loaded = true;
+        } catch (_) {}
+      }
+      kids.hidden = false; tw.textContent = "▾";
+    };
+  } else {
+    row.onclick = () => { (async () => { try { addTab(await api().read_path(entry.path)); markActiveInTree(); } catch (_) {} })(); };
+  }
+  return wrap;
+}
+async function openFolder(path) {
+  try {
+    sidebarFolder = path;
+    try { api().set_folder(path); } catch (_) {}  // so Save defaults into this folder
+    const info = await api().list_dir(path);
+    document.getElementById("sidebar-root").textContent = info.name || path;
+    const tree = document.getElementById("sidebar-tree");
+    tree.innerHTML = "";
+    for (const e of info.entries || []) tree.appendChild(makeTreeNode(e, 0));
+    sidebarEl.removeAttribute("hidden");
+    markActiveInTree();
+  } catch (_) {}
+}
+function renderEmptySidebar() {
+  document.getElementById("sidebar-root").textContent = "탐색기";
+  const tree = document.getElementById("sidebar-tree");
+  tree.innerHTML = "";
+  const box = document.createElement("div"); box.className = "sidebar-empty";
+  box.appendChild(Object.assign(document.createElement("div"), { textContent: "파일을 열면 그 폴더가 여기 표시됩니다" }));
+  tree.appendChild(box);
+}
+async function doOpenFolder() {
+  try { const r = await api().open_folder(); if (r && r.folder) openFolder(r.folder); }
+  catch (_) {}
+}
+// No folder-open button at all: opening a file (열기 / ⌘O) automatically reveals
+// its folder in the explorer, so there's a single "열기" action and no separate
+// folder-open step. doOpenFolder/open_folder stay defined but unused.
+
+// Backend (single-instance server) hands Finder-opened files/folders here.
+window.QV = {
+  openPath(path) {
+    if (!ed) { pendingOpens.push(path); return; }
+    (async () => { try { addTab(await api().read_path(path)); maybeRevealFolder(path); } catch (_) {} })();
+  },
+  openFolder(path) { if (ed) openFolder(path); else pendingOpens.push({ folder: path }); },
+  newBlank() { if (ed) doNew(); },
+};
+
+let toastTimer = null;
+function flash(msg) {
+  const el = document.getElementById("toast"); el.textContent = msg; el.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+document.getElementById("btn-new").onclick = doNew;
+document.getElementById("btn-open").onclick = doOpen;
+document.getElementById("btn-save").onclick = doSave;
+document.getElementById("btn-pdf").onclick = doPdf;
+async function doHelp() {
+  const existing = tabs.find((t) => t.title === "푸르름 도움말");
+  if (existing) { switchTo(existing.id); return; }
+  try { addTab(await api().help_doc()); } catch (_) {}
+}
+document.getElementById("btn-help").onclick = doHelp;
+
+// Insert menu (콜아웃·표·탭셋 …)
+const insertBtn = document.getElementById("btn-insert");
+const insertMenu = document.getElementById("insert-menu");
+function closeInsertMenu() { insertMenu.setAttribute("hidden", ""); }
+insertBtn.onclick = (e) => {
+  e.stopPropagation();
+  if (!insertMenu.hasAttribute("hidden")) { closeInsertMenu(); return; }
+  const r = insertBtn.getBoundingClientRect();
+  insertMenu.style.left = Math.round(r.left) + "px";
+  insertMenu.style.top = Math.round(r.bottom + 5) + "px";
+  insertMenu.removeAttribute("hidden");
+};
+insertMenu.querySelectorAll("button[data-snip]").forEach((b) => {
+  b.onclick = () => {
+    closeInsertMenu();
+    if (b.dataset.snip === "draw") openDrawModal();
+    else insertBlock(b.dataset.snip);
+  };
+});
+document.addEventListener("click", (e) => {
+  if (e.target !== insertBtn && !insertBtn.contains(e.target) && !insertMenu.contains(e.target)) closeInsertMenu();
+});
+
+/* ============ 그림판 (canvas paint popup) ============ */
+const drawModal = document.getElementById("draw-modal");
+const drawCanvas = document.getElementById("draw-canvas");
+const dctx = drawCanvas.getContext("2d", { willReadFrequently: true });
+let drawColor = "#2b2b26", drawSize = 5, erasing = false, drawing = false, dLastX = 0, dLastY = 0;
+const undoStack = [];
+
+function drawPos(e) {
+  const r = drawCanvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * (drawCanvas.width / r.width), y: (e.clientY - r.top) * (drawCanvas.height / r.height) };
+}
+function drawStyle() {
+  dctx.lineCap = "round"; dctx.lineJoin = "round"; dctx.lineWidth = drawSize;
+  dctx.globalCompositeOperation = erasing ? "destination-out" : "source-over";
+  dctx.strokeStyle = erasing ? "rgba(0,0,0,1)" : drawColor;
+  dctx.fillStyle = dctx.strokeStyle;
+}
+function pushUndo() { try { if (undoStack.length > 25) undoStack.shift(); undoStack.push(dctx.getImageData(0, 0, drawCanvas.width, drawCanvas.height)); } catch (_) {} }
+drawCanvas.addEventListener("pointerdown", (e) => {
+  drawing = true; pushUndo(); const p = drawPos(e); dLastX = p.x; dLastY = p.y;
+  drawStyle(); dctx.beginPath(); dctx.arc(p.x, p.y, Math.max(drawSize / 2, 0.5), 0, 7); dctx.fill();
+  try { drawCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+});
+drawCanvas.addEventListener("pointermove", (e) => {
+  if (!drawing) return; const p = drawPos(e);
+  drawStyle(); dctx.beginPath(); dctx.moveTo(dLastX, dLastY); dctx.lineTo(p.x, p.y); dctx.stroke();
+  dLastX = p.x; dLastY = p.y;
+});
+const endStroke = () => { drawing = false; };
+drawCanvas.addEventListener("pointerup", endStroke);
+drawCanvas.addEventListener("pointercancel", endStroke);
+
+function syncDrawTools() {
+  document.querySelectorAll("#draw-colors .sw").forEach((b) => b.classList.toggle("active", !erasing && b.dataset.color === drawColor));
+  document.querySelectorAll("#draw-sizes button").forEach((b) => b.classList.toggle("active", +b.dataset.size === drawSize));
+  document.getElementById("draw-eraser").classList.toggle("active", erasing);
+}
+document.getElementById("draw-colors").querySelectorAll(".sw").forEach((b) => {
+  b.onclick = () => { drawColor = b.dataset.color; erasing = false; syncDrawTools(); };
+});
+document.getElementById("draw-sizes").querySelectorAll("button").forEach((b) => {
+  b.onclick = () => { drawSize = +b.dataset.size; syncDrawTools(); };
+});
+document.getElementById("draw-eraser").onclick = () => { erasing = !erasing; syncDrawTools(); };
+document.getElementById("draw-undo").onclick = () => { const s = undoStack.pop(); if (s) dctx.putImageData(s, 0, 0); };
+document.getElementById("draw-clear").onclick = () => { pushUndo(); dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); };
+document.getElementById("draw-cancel").onclick = closeDrawModal;
+document.getElementById("draw-insert").onclick = insertDrawing;
+syncDrawTools();
+// Close on backdrop click or Escape.
+drawModal.addEventListener("mousedown", (e) => { if (e.target === drawModal) closeDrawModal(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !drawModal.hasAttribute("hidden")) { e.preventDefault(); closeDrawModal(); } });
+
+function openDrawModal() {
+  dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+  undoStack.length = 0; erasing = false; syncDrawTools();
+  drawModal.removeAttribute("hidden");
+}
+function closeDrawModal() { drawModal.setAttribute("hidden", ""); if (ed) ed.focus(); }
+
+function insertImageMarkdown(path) {
+  const view = ed.view; const sel = view.state.selection.main;
+  const line = view.state.doc.lineAt(sel.from);
+  const before = view.state.doc.sliceString(line.from, sel.from);
+  const lead = before.trim() === "" ? "" : "\n\n";
+  const text = lead + "![](" + path + ")\n";
+  view.dispatch({ changes: { from: sel.from, to: sel.to, insert: text }, selection: { anchor: sel.from + text.length }, scrollIntoView: true });
+  view.focus();
+}
+// Crop to the drawn area (trim empty margins) but keep the drawing at the size
+// it was drawn — big doodles stay big, small ones stay small.
+function croppedDrawingDataUrl() {
+  const w = drawCanvas.width, h = drawCanvas.height;
+  const px = dctx.getImageData(0, 0, w, h).data;
+  let minX = w, minY = h, maxX = -1, maxY = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (px[(y * w + x) * 4 + 3] !== 0) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return null;  // nothing drawn
+  const pad = 14;
+  minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+  maxX = Math.min(w - 1, maxX + pad); maxY = Math.min(h - 1, maxY + pad);
+  const cw = maxX - minX + 1, ch = maxY - minY + 1;
+  const out = document.createElement("canvas"); out.width = cw; out.height = ch;
+  out.getContext("2d").drawImage(drawCanvas, minX, minY, cw, ch, 0, 0, cw, ch);
+  return out.toDataURL("image/png");
+}
+async function insertDrawing() {
+  const dataUrl = croppedDrawingDataUrl();
+  if (!dataUrl) { flash("그림을 그려주세요"); return; }
+  try {
+    const r = await api().save_drawing(dataUrl);
+    if (r && r.path) { insertImageMarkdown(r.path); flash("그림 저장됨 — " + r.path); closeDrawModal(); }
+    else if (r && r.error) { flash(r.error); }
+  } catch (e) { flash("그림 저장 실패: " + e); }
+}
+reloadBtn.onclick = () => {
+  const t = activeTab(); if (!t || !t.pending) return;
+  loading = true; ed.setState(freshStateParked(t.pending.text)); loading = false;
+  t.savedText = t.pending.text; t.title = t.pending.title; t.state = ed.getState();
+  t.external = false; t.pending = null; activeTitle = t.title;
+  reloadBtn.classList.remove("show"); statusEl.textContent = "";
+  renderTabs();
+};
+
+// Links inside rendered widgets open in the external browser — never let a
+// click navigate the app window away from the editor.
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("a[href]");
+  if (!a) return;
+  e.preventDefault();
+  const href = a.getAttribute("href") || "";
+  if (/^https?:/i.test(href)) { try { api().open_url(href); } catch (_) {} }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  const k = e.key.toLowerCase();
+  // Tab management works regardless of editor focus.
+  if (k === "w") { e.preventDefault(); if (activeId) closeTab(activeId); return; }
+  if (e.key === "Tab" && tabs.length > 1) {   // Ctrl+Tab cycles tabs
+    e.preventDefault();
+    const i = tabs.findIndex((t) => t.id === activeId);
+    const j = (i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length;
+    switchTo(tabs[j].id); return;
+  }
+  // Backup shortcuts for when focus is outside the editor (CM handles these when focused).
+  if (ed && ed.view.hasFocus) return;
+  if (k === "n") { e.preventDefault(); doNew(); }
+  else if (k === "o") { e.preventDefault(); doOpen(); }
+  else if (k === "s") { e.preventDefault(); doSave(); }
+  else if (k === "p") { e.preventDefault(); doPdf(); }
+});
+
+async function pollLoop() {
+  try {
+    const changed = await api().poll();   // array of changed docs, or null
+    if (changed && changed.length) {
+      for (const st of changed) {
+        const t = tabs.find((x) => x.path === st.path);
+        if (!t) continue;
+        if (!isDirty(t)) {
+          // No local edits — reload silently.
+          if (t.id === activeId) {
+            loading = true; ed.setState(freshStateParked(st.text)); loading = false;
+            t.state = ed.getState();
+          } else {
+            t.state = freshStateParked(st.text);
+          }
+          t.savedText = st.text; t.title = st.title; t.external = false; t.pending = null;
+        } else {
+          // Local edits exist — flag the conflict, let the user choose.
+          t.external = true; t.pending = st;
+          if (t.id === activeId) { reloadBtn.classList.add("show"); statusEl.textContent = "⚠ 외부에서 파일이 바뀜"; }
+        }
+      }
+      renderTabs();
+    }
+  } catch (_) {}
+  setTimeout(pollLoop, 700);
+}
+
+window.addEventListener("pywebviewready", async () => {
+  ed = QVEditor.create(document.getElementById("editor-host"), {
+    doc: "",
+    onChange: () => { if (!loading) refreshActiveDirty(); },
+    onSave: doSave,
+    onPdf: doPdf,
+    onOpen: doOpen,
+    onNew: doNew,
+    renderBlock, renderFrontmatter, resolveAsset, typeset, typesetSync, resolveImages: enhance,
+  });
+  // ⌘V로 스크린샷/이미지 붙여넣기: 클립보드에 이미지가 있으면 활성 문서 옆
+  // attachments/ 폴더에 저장하고 마크다운을 삽입한다 (텍스트 붙여넣기는 그대로).
+  ed.view.contentDOM.addEventListener("paste", async () => {
+    try {
+      const r = await api().paste_image();
+      if (r && r.path) {
+        ed.view.dispatch(ed.view.state.replaceSelection("![](" + r.path + ")"));
+        flash("이미지 저장됨 — " + r.path);
+      } else if (r && r.error) {
+        flash(r.error);
+      }
+    } catch (_) {}
+  });
+
+  const state = await api().get_state();
+  if (state.path) addTab(state);              // launched with a file
+  else doNew();                               // no file → blank document (Sublime-style)
+  if (state.folder) openFolder(state.folder); // launched on a folder → show the tree
+  else { renderEmptySidebar(); if (state.path) maybeRevealFolder(state.path); } // else reveal the file's folder
+  for (const p of pendingOpens.splice(0)) {
+    if (typeof p === "string") window.QV.openPath(p);
+    else if (p && p.folder) window.QV.openFolder(p.folder);
+  }
+  ed.focus();
+  pollLoop();
+});
+</script>
+</body>
+</html>
