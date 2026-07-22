@@ -11,7 +11,10 @@ const { webkit } = require("playwright");
   await page.goto("http://127.0.0.1:8377/index.html");
   await page.waitForTimeout(2000);
   const out={};
-  const clickBar=async(label)=>page.evaluate((l)=>{const b=[...document.querySelectorAll(".qv-tablebar button")].find(b=>b.textContent===l);if(!b)return false;b.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true}));return true;},label);
+  // activate: click a cell so the context bar docks
+  const cb0=await page.evaluate(()=>{const c=document.querySelector(".qv-hastable td");const r=c.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};});
+  await page.mouse.click(cb0.x,cb0.y); await page.waitForTimeout(400);
+  const clickBar=async(label)=>page.evaluate((l)=>{const b=[...document.querySelectorAll("#ctxbar button")].find(b=>b.textContent===l);if(!b)return false;b.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true}));return true;},label);
   // toggle center on
   out.clicked = await clickBar("가운데");
   await page.waitForTimeout(500);

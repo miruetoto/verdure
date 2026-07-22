@@ -24,8 +24,8 @@ const { webkit } = require("playwright");
   out.widgetsAfterArrows = await widgets();
   // 3) MD button: reveal source; then move caret out → widget returns
   const cellBox=await page.evaluate(()=>{const c=document.querySelector(".qv-hastable td");const r=c.getBoundingClientRect();return {x:r.x+5,y:r.y+5};});
-  await page.mouse.move(cellBox.x, cellBox.y); await page.waitForTimeout(200); // hover to show toolbar
-  const mdClicked = await page.evaluate(()=>{const b=[...document.querySelectorAll(".qv-tablebar button")].find(b=>b.textContent==="MD"); if(!b)return false; b.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true})); return true;});
+  await page.mouse.click(cellBox.x, cellBox.y); await page.waitForTimeout(400); // click cell → bar docks
+  const mdClicked = await page.evaluate(()=>{const b=[...document.querySelectorAll("#ctxbar button")].find(b=>b.textContent==="MD"); if(!b)return false; b.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true})); return true;});
   await page.waitForTimeout(300);
   out.mdClicked = mdClicked;
   out.rawShown = (await widgets()).rawPipes;
