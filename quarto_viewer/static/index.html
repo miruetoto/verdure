@@ -1400,6 +1400,19 @@ document.addEventListener("keydown", (e) => {
     else { document.getElementById("tbl-addrow").click(); }
   }
 });
+// After a modal closes, focus hands back to the editor and WKWebView may drag
+// the (browser) selection to a stale spot — CM then maps it to the widget's
+// right edge. Settle the caret: assert now, after the handoff timers, and once
+// more when the editor actually regains focus.
+function settleCaret(anchor) {
+  const view = ed.view;
+  const fix = () => { try { view.dispatch({ selection: { anchor: Math.min(anchor, view.state.doc.length) }, scrollIntoView: true }); } catch (_) {} };
+  fix(); setTimeout(fix, 80); setTimeout(fix, 300);
+  const onF = () => { setTimeout(fix, 0); view.dom.removeEventListener("focusin", onF); };
+  view.dom.addEventListener("focusin", onF);
+  setTimeout(() => view.dom.removeEventListener("focusin", onF), 1200);
+}
+
 // Editing an existing table (clicked in the document).
 function editTableFromWidget(pipeText, centered, replace) {
   const m = QVEditor.parseTable(pipeText) || { header: ["", ""], aligns: [null, null], rows: [["", ""]] };
@@ -1422,9 +1435,7 @@ function newTableViaEditor() {
       scrollIntoView: true,
     });
     view.focus();
-    // Focus restoration (modal close → editor) can drag the browser selection
-    // back to a stale spot at the widget's right edge; re-assert shortly after.
-    setTimeout(() => { try { view.dispatch({ selection: { anchor: Math.min(anchor, view.state.doc.length) }, scrollIntoView: true }); } catch (_) {} }, 60);
+    settleCaret(anchor);
   });
 }
 
@@ -1658,6 +1669,7 @@ window.addEventListener("pywebviewready", async () => {
       c.innerHTML = ""; c.hidden = true;
     },
     editTable: editTableFromWidget,
+    settleCaret,
   });
   // ⌘V로 스크린샷/이미지 붙여넣기: 클립보드에 이미지가 있으면 활성 문서 옆
   // attachments/ 폴더에 저장하고 마크다운을 삽입한다 (텍스트 붙여넣기는 그대로).
