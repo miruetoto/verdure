@@ -125,7 +125,28 @@
     font: 500 10.5px/1 -apple-system, system-ui, sans-serif; padding: 4px 7px;
   }
   #sidebar-openbtn:hover { background: var(--hover); color: var(--fg); }
+  #sidebar-addbtn {
+    flex: none; width: 20px; height: 20px; padding: 0; cursor: pointer;
+    border: none; border-radius: 5px; background: transparent; color: var(--muted);
+    font: 500 13px/1 -apple-system, system-ui, sans-serif;
+  }
+  #sidebar-addbtn:hover { background: var(--hover); color: var(--fg); }
   #sidebar-tree { flex: 1; overflow: auto; padding: 4px 0 12px; }
+  /* Workspace roots (multi-folder): bold header row with a close ×. */
+  .tree-root-sec { margin-bottom: 2px; }
+  .tree-root-head {
+    display: flex; align-items: center; gap: 4px; cursor: default;
+    padding: 4px 8px 4px 6px; user-select: none;
+    font: 700 11.5px/1.3 -apple-system, system-ui, sans-serif; color: var(--fg);
+  }
+  .tree-root-head .tn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tree-root-head .tw { width: 12px; flex: none; color: var(--muted); font-size: 10px; }
+  .tree-root-close {
+    flex: none; width: 17px; height: 17px; border: none; border-radius: 5px; padding: 0;
+    background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; opacity: 0;
+  }
+  .tree-root-head:hover .tree-root-close { opacity: .8; }
+  .tree-root-close:hover { background: var(--border); color: var(--fg); opacity: 1; }
   .sidebar-empty {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     padding: 40px 16px; text-align: center; color: var(--muted);
@@ -286,6 +307,7 @@
     <aside id="sidebar">
       <div id="sidebar-head">
         <span id="sidebar-root">탐색기</span>
+        <button id="sidebar-addbtn" title="폴더 열기 (여러 개 가능)">＋</button>
       </div>
       <div id="sidebar-tree"></div>
     </aside>
@@ -995,7 +1017,7 @@ function insertBlock(key) {
 }
 
 async function doOpen() {
-  try { const s = await api().open_file(); if (s) { addTab(s); maybeRevealFolder(s.path); } }
+  try { const s = await api().open_file(); if (s) addTab(s); }
   catch (e) { console.error("open failed", e); }
 }
 async function doSave() {
@@ -1013,17 +1035,12 @@ async function doSave() {
   } catch (e) { flash("저장 실패: " + e); }
 }
 
-/* ============ Sidebar file explorer ============ */
+/* ============ Sidebar file explorer (multi-root, VSCode-style) ============ */
 const sidebarEl = document.getElementById("sidebar");
-// The folder currently shown in the explorer. Opening a file auto-reveals its
-// folder here (only if none is open yet), so there's no separate "open folder"
-// step for the common case — you just 열기 a file and its folder appears.
-let sidebarFolder = null;
-function maybeRevealFolder(path) {
-  if (!path || sidebarFolder) return;
-  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  if (i > 0) openFolder(path.slice(0, i));
-}
+// Open folders shown as top-level roots. Nothing is revealed automatically —
+// the tree only shows folders the user explicitly opened (폴더 열기), and
+// several can be open at once like a VSCode multi-root workspace.
+let rootFolders = [];   // [{ path, name, collapsed }]
 function markActiveInTree() {
   const t = activeTab();
   const p = t ? t.path : "";
@@ -1067,40 +1084,65 @@ function makeTreeNode(entry, depth) {
   }
   return wrap;
 }
+// Add a folder as a workspace root (dedup) and re-render the tree.
 async function openFolder(path) {
-  try {
-    sidebarFolder = path;
-    try { api().set_folder(path); } catch (_) {}  // so Save defaults into this folder
-    const info = await api().list_dir(path);
-    document.getElementById("sidebar-root").textContent = info.name || path;
-    const tree = document.getElementById("sidebar-tree");
-    tree.innerHTML = "";
-    for (const e of info.entries || []) tree.appendChild(makeTreeNode(e, 0));
-    sidebarEl.removeAttribute("hidden");
-    markActiveInTree();
-  } catch (_) {}
+  if (!path) return;
+  if (!rootFolders.some((r) => r.path === path)) {
+    rootFolders.push({ path, name: null, collapsed: false });
+    try { api().set_folder(path); } catch (_) {}  // newest root = Save default
+  }
+  await renderRoots();
+}
+function closeRoot(path) {
+  rootFolders = rootFolders.filter((r) => r.path !== path);
+  const last = rootFolders[rootFolders.length - 1];
+  try { api().set_folder(last ? last.path : ""); } catch (_) {}
+  renderRoots();
+}
+async function renderRoots() {
+  const tree = document.getElementById("sidebar-tree");
+  tree.innerHTML = "";
+  if (!rootFolders.length) { renderEmptySidebar(); return; }
+  for (const r of rootFolders) {
+    let info;
+    try { info = await api().list_dir(r.path); } catch (_) { continue; }
+    r.name = info.name || r.path;
+    const sec = document.createElement("div"); sec.className = "tree-root-sec";
+    const head = document.createElement("div"); head.className = "tree-root-head";
+    const tw = document.createElement("span"); tw.className = "tw"; tw.textContent = r.collapsed ? "▸" : "▾";
+    const nm = document.createElement("span"); nm.className = "tn"; nm.textContent = r.name; nm.title = r.path;
+    const x = document.createElement("button"); x.className = "tree-root-close"; x.textContent = "×"; x.title = "폴더 닫기";
+    x.onclick = (e) => { e.stopPropagation(); closeRoot(r.path); };
+    head.append(tw, nm, x);
+    sec.appendChild(head);
+    const kids = document.createElement("div"); kids.hidden = r.collapsed;
+    for (const e of info.entries || []) kids.appendChild(makeTreeNode(e, 0));
+    sec.appendChild(kids);
+    head.onclick = () => { r.collapsed = !r.collapsed; kids.hidden = r.collapsed; tw.textContent = r.collapsed ? "▸" : "▾"; };
+    tree.appendChild(sec);
+  }
+  markActiveInTree();
 }
 function renderEmptySidebar() {
-  document.getElementById("sidebar-root").textContent = "탐색기";
   const tree = document.getElementById("sidebar-tree");
   tree.innerHTML = "";
   const box = document.createElement("div"); box.className = "sidebar-empty";
-  box.appendChild(Object.assign(document.createElement("div"), { textContent: "파일을 열면 그 폴더가 여기 표시됩니다" }));
+  box.appendChild(Object.assign(document.createElement("div"), { textContent: "열린 폴더가 없습니다" }));
+  const btn = document.createElement("button"); btn.textContent = "폴더 열기"; btn.onclick = doOpenFolder;
+  box.appendChild(btn);
   tree.appendChild(box);
 }
 async function doOpenFolder() {
   try { const r = await api().open_folder(); if (r && r.folder) openFolder(r.folder); }
   catch (_) {}
 }
-// No folder-open button at all: opening a file (열기 / ⌘O) automatically reveals
-// its folder in the explorer, so there's a single "열기" action and no separate
-// folder-open step. doOpenFolder/open_folder stay defined but unused.
+document.getElementById("sidebar-addbtn").onclick = doOpenFolder;
 
 // Backend (single-instance server) hands Finder-opened files/folders here.
 window.QV = {
   openPath(path) {
     if (!ed) { pendingOpens.push(path); return; }
-    (async () => { try { addTab(await api().read_path(path)); maybeRevealFolder(path); } catch (_) {} })();
+    (async () => { try { addTab(await api().read_path(path)); } catch (_) {} })();
   },
   openFolder(path) { if (ed) openFolder(path); else pendingOpens.push({ folder: path }); },
   newBlank() { if (ed) doNew(); },
@@ -1345,8 +1387,8 @@ window.addEventListener("pywebviewready", async () => {
   const state = await api().get_state();
   if (state.path) addTab(state);              // launched with a file
   else doNew();                               // no file → blank document (Sublime-style)
-  if (state.folder) openFolder(state.folder); // launched on a folder → show the tree
-  else { renderEmptySidebar(); if (state.path) maybeRevealFolder(state.path); } // else reveal the file's folder
+  if (state.folder) openFolder(state.folder); // launched on a folder → add as root
+  else renderEmptySidebar();                   // otherwise the explorer starts empty
   for (const p of pendingOpens.splice(0)) {
     if (typeof p === "string") window.QV.openPath(p);
     else if (p && p.folder) window.QV.openFolder(p.folder);

@@ -178,11 +178,14 @@ async fn save_doc(state: State<'_, SharedState>, app: AppHandle, text: String) -
 async fn save_as(state: State<'_, SharedState>, app: AppHandle, text: String) -> Result<Value, ()> {
     let (dir, default) = {
         let st = state.lock().unwrap();
+        // Default location: the active file's folder → the sidebar folder →
+        // ~/Documents. Never the OS's "last used" (it drifts to random spots).
         let dir = st
             .path
             .as_ref()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .or_else(|| st.folder.as_ref().map(PathBuf::from));
+            .or_else(|| st.folder.as_ref().map(PathBuf::from))
+            .or_else(|| app.path().document_dir().ok());
         let default = st
             .path
             .as_ref()
