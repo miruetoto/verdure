@@ -739,6 +739,13 @@ async function enhance(el) {
   el.querySelectorAll("pre code").forEach((c) => { try { hljs.highlightElement(c); } catch (_) {} });
   const imgs = el.querySelectorAll("img");
   for (const img of imgs) {
+    // Quarto image attribute: `![](src){width=300}` — marked leaves the braces
+    // as literal text right after the <img>; apply the width and remove them.
+    const t = img.nextSibling;
+    if (t && t.nodeType === 3) {
+      const m = /^\{\s*width=(\d+%?)\s*\}/.exec(t.textContent);
+      if (m) { img.style.width = /%$/.test(m[1]) ? m[1] : m[1] + "px"; t.textContent = t.textContent.slice(m[0].length); }
+    }
     const src = img.getAttribute("src") || "";
     if (!src || /^(https?:|data:)/.test(src)) continue;
     const uri = await resolveAsset(src);

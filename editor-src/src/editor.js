@@ -26,9 +26,24 @@ let HOST = {
 };
 
 /* ------------------------------ widgets ------------------------------ */
+// Rewrite (or add) the Quarto {width=N} attribute after the image markdown
+// that starts at this widget's document position.
+function applyImageWidth(view, dom, width) {
+  try {
+    const pos = view.posAtDOM(dom);
+    const line = view.state.doc.lineAt(pos);
+    const text = view.state.doc.sliceString(pos, line.to);
+    const m = /^!\[[^\]]*\]\([^)]*\)(\{\s*width=[^}]*\})?/.exec(text);
+    if (!m) return;
+    const attrTo = pos + m[0].length;
+    const attrFrom = attrTo - (m[1] ? m[1].length : 0);
+    view.dispatch({ changes: { from: attrFrom, to: attrTo, insert: `{width=${width}}` } });
+  } catch (_) { /* widget detached mid-drag */ }
+}
+
 class ImageWidget extends WidgetType {
-  constructor(src, alt) { super(); this.src = src; this.alt = alt; }
-  eq(o) { return o.src === this.src && o.alt === this.alt; }
+  constructor(src, alt, width) { super(); this.src = src; this.alt = alt; this.width = width || null; }
+  eq(o) { return o.src === this.src && o.alt === this.alt && o.width === this.width; }
   toDOM(view) {
     // The widget's root must stay stable: replacing it (img.replaceWith) mutates
     // the editable DOM outside a transaction, and CM's observer syncs the
@@ -39,12 +54,31 @@ class ImageWidget extends WidgetType {
     const img = document.createElement("img");
     img.className = "qv-img";
     img.alt = this.alt || "";
+    if (this.width) img.style.width = /%$/.test(this.width) ? this.width : this.width + "px";
     wrap.appendChild(img);
     const fail = () => { wrap.textContent = ""; wrap.appendChild(missing(this.src, this.alt)); };
     if (/^(https?:|data:)/.test(this.src)) img.src = this.src;
     else HOST.resolveAsset(this.src).then((uri) => { if (uri) img.src = uri; else fail(); }).catch(fail);
     img.addEventListener("error", fail);
     wrap.addEventListener("mousedown", (e) => { e.preventDefault(); placeCursor(view, wrap); });
+    // Drag the corner grip to resize: live via style.width, then persisted as a
+    // Quarto {width=N} attribute so real `quarto render` honors it too.
+    const grip = document.createElement("span");
+    grip.className = "qv-img-grip";
+    grip.title = "드래그해서 크기 조절";
+    wrap.appendChild(grip);
+    grip.addEventListener("mousedown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const startX = e.clientX, startW = img.getBoundingClientRect().width;
+      const move = (ev) => { img.style.width = Math.max(40, Math.round(startW + ev.clientX - startX)) + "px"; };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        applyImageWidth(view, wrap, Math.round(img.getBoundingClientRect().width));
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
     return wrap;
   }
   ignoreEvent() { return true; }
@@ -287,19 +321,25 @@ function buildDecorations(state) {
       if (name === "Image") {
         const raw = doc.sliceString(from, to);
         const m = /^!\[([^\]]*)\]\(([^)]+)\)/.exec(raw);
-        if (m && !spanActive(from, to)) {
-          decos.push({ from, to, deco: Decoration.replace({ widget: new ImageWidget(m[2].trim(), m[1]) }) });
+        // Quarto image attribute right after the node: ![alt](src){width=300}
+        const lineEnd = doc.lineAt(to).to;
+        const am = /^\{\s*width=(\d+%?)\s*\}/.exec(doc.sliceString(to, Math.min(to + 40, lineEnd)));
+        const end = am ? to + am[0].length : to;
+        if (m && !spanActive(from, end)) {
+          decos.push({ from, to: end, deco: Decoration.replace({ widget: new ImageWidget(m[2].trim(), m[1], am ? am[1] : null) }) });
           return false;
         }
         // Active line: the source is revealed for editing — but a data: URI is
         // a wall of base64 nobody edits by hand. Keep the document text intact
-        // and fold just the URL span into a compact token.
+        // and fold just the URL span into a compact token, UNCONDITIONALLY:
+        // even with the caret inside it (clicking the image, right after a
+        // paste) the fold must hold, or the base64 explodes over the screen.
+        // The fold is atomic, so the caret skips it and backspace removes the
+        // whole URL in one stroke.
         if (m && m[2].startsWith("data:")) {
           const urlFrom = from + m[0].indexOf("(") + 1;
           const urlTo = from + m[0].length - 1;
-          if (!spanActive(urlFrom, urlTo)) {
-            decos.push({ from: urlFrom, to: urlTo, deco: Decoration.replace({ widget: new DataUriToken(urlTo - urlFrom) }) });
-          }
+          decos.push({ from: urlFrom, to: urlTo, deco: Decoration.replace({ widget: new DataUriToken(urlTo - urlFrom) }) });
         }
         return true;
       }
@@ -468,6 +508,13 @@ const theme = EditorView.theme({
   ".cm-strong": { fontWeight: "700", color: "#333" },
   ".cm-em": { fontStyle: "italic" },
   ".cm-strike": { textDecoration: "line-through", color: "#999" },
+  ".qv-imgwrap": { position: "relative", display: "inline-block" },
+  ".qv-img-grip": {
+    position: "absolute", right: "-7px", bottom: "-7px", width: "14px", height: "14px",
+    borderRadius: "4px", background: "#fff", border: "1.5px solid #ff6f61",
+    cursor: "nwse-resize", opacity: "0", transition: "opacity .15s",
+  },
+  ".qv-imgwrap:hover .qv-img-grip": { opacity: "1" },
   ".cm-datauri": {
     display: "inline-block", padding: "0 7px", margin: "0 1px",
     background: "#f0eee2", border: "1px solid #ddd9c3", borderRadius: "6px",
