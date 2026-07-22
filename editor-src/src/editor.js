@@ -691,14 +691,14 @@ const codeHighlight = HighlightStyle.define([
 ]);
 
 // Values mirror the real 신록예찬 blog (Quarto cosmo + styles.css), measured
-// from its rendered pages: 13.6px/1.5 NanumMyeongjo, coral #ff6f61 headings
+// from its rendered pages: coral #ff6f61 headings, GitHub system-sans body
 // (weight 600), purple #7d12ba inline code on rgba(233,236,239,.65), gray
 // bootstrap-bordered quotes.
 const MONO = "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "#fcfcf7", color: "#555" },
   ".cm-scroller": {
-    fontFamily: "'NanumMyeongjo',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif",
+    fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans','Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif",
     fontSize: "16px", lineHeight: "1.5", overflow: "auto",
   },
   ".cm-content": { padding: "44px 8px 200px", maxWidth: "820px", margin: "0 auto", caretColor: "#ff6f61" },
