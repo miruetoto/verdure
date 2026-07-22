@@ -18,9 +18,9 @@
   header {
     display: flex; align-items: center; gap: 3px;
     height: 48px; padding: 0 10px; flex: none;
-    background: color-mix(in srgb, var(--toolbar) 90%, transparent);
-    backdrop-filter: saturate(180%) blur(20px);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    background: var(--toolbar);
+    /* No backdrop-filter: in WebKit it clips descendants to the header box, so
+       the button tooltips (which hang below the header) were cut off. */
     border-bottom: 1px solid var(--border);
     -webkit-user-select: none; user-select: none;
   }
