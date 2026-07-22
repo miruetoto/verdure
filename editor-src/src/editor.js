@@ -155,6 +155,161 @@ class MathWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
+/* ---------------------- in-place table editing ----------------------- */
+// GFM pipe-table model: {header[], aligns[], rows[][]} ⇄ markdown text.
+function parseTable(src) {
+  const lines = src.trim().split("\n").filter((l) => l.trim().startsWith("|"));
+  if (lines.length < 2) return null;
+  const splitRow = (l) => l.trim().replace(/^\|/, "").replace(/\|\s*$/, "")
+    .split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+  const header = splitRow(lines[0]);
+  const aligns = splitRow(lines[1]).map((s) => {
+    const L = s.startsWith(":"), R = s.endsWith(":");
+    return L && R ? "center" : R ? "right" : L ? "left" : null;
+  });
+  return { header, aligns, rows: lines.slice(2).map(splitRow) };
+}
+function serializeTable(m) {
+  const esc = (c) => String(c ?? "").replace(/\n/g, " ").replace(/\|/g, "\\|");
+  const cols = Math.max(m.header.length, m.aligns.length, ...m.rows.map((r) => r.length), 1);
+  const norm = (r) => { const o = [...r]; while (o.length < cols) o.push(""); return o.slice(0, cols); };
+  const header = norm(m.header), rows = m.rows.map(norm);
+  const aligns = (() => { const a = [...m.aligns]; while (a.length < cols) a.push(null); return a.slice(0, cols); })();
+  const w = header.map((h, i) => Math.max(3, esc(h).length, ...rows.map((r) => esc(r[i]).length)));
+  const pad = (s, i) => esc(s) + " ".repeat(Math.max(0, w[i] - esc(s).length));
+  const line = (r) => "| " + r.map((c, i) => pad(c, i)).join(" | ") + " |";
+  const dash = (a, i) => {
+    const n = Math.max(3, w[i]);
+    if (a === "center") return ":" + "-".repeat(Math.max(1, n - 2)) + ":";
+    if (a === "right") return "-".repeat(Math.max(2, n - 1)) + ":";
+    if (a === "left") return ":" + "-".repeat(Math.max(2, n - 1));
+    return "-".repeat(n);
+  };
+  return [line(header), "|" + aligns.map((a, i) => " " + dash(a, i) + " ").join("|") + "|", ...rows.map(line)].join("\n");
+}
+function placeCaretEnd(node) {
+  try {
+    const r = document.createRange(); r.selectNodeContents(node); r.collapse(false);
+    const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+  } catch (_) {}
+}
+
+// Make a rendered pipe table editable in place (HWP/Typora-style): cells are
+// contenteditable, Tab/Enter move between cells, and a hover toolbar adds or
+// removes rows/columns and sets column alignment. Every operation rewrites the
+// markdown source, so the document stays plain GFM.
+function enhanceTableWidget(el, view, widget) {
+  const table = el.querySelector("table");
+  if (!table) return;
+  el.classList.add("qv-hastable");
+  let last = { r: 0, c: 0 };
+  const trs = () => [...table.querySelectorAll("tr")];
+  // Current model = original aligns + whatever is in the DOM cells right now.
+  const domModel = () => {
+    const m = parseTable(widget.src) || { header: [], aligns: [], rows: [] };
+    trs().forEach((tr, ri) => {
+      [...tr.children].forEach((cell, ci) => {
+        const v = cell.textContent;
+        if (ri === 0) m.header[ci] = v;
+        else (m.rows[ri - 1] || (m.rows[ri - 1] = []))[ci] = v;
+      });
+    });
+    return m;
+  };
+  const range = () => { const from = view.posAtDOM(el); return { from, to: from + widget.src.length }; };
+  // Rewrite the doc and put the caret in cell (r, c) of the rebuilt widget.
+  const commit = (m, r, c) => {
+    const { from, to } = range();
+    const text = serializeTable(m);
+    view.dispatch({ changes: { from, to, insert: text } });
+    if (r == null) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        let best = null, bd = Infinity;
+        for (const t of view.dom.querySelectorAll(".qv-hastable table")) {
+          const d = Math.abs(view.posAtDOM(t.closest(".qv-block")) - from);
+          if (d < bd) { bd = d; best = t; }
+        }
+        const tr = best && [...best.querySelectorAll("tr")][r];
+        const cell = tr && tr.children[Math.min(c, tr.children.length - 1)];
+        if (cell) { cell.focus(); placeCaretEnd(cell); }
+      } catch (_) {}
+    }));
+  };
+  const commitIfChanged = () => {
+    const m = domModel();
+    if (serializeTable(m) !== widget.src.trim()) commit(m, null, 0);
+  };
+  const nav = (ri, ci, delta) => {
+    const m = domModel();
+    const cols = Math.max(m.header.length, 1);
+    let idx = ri * cols + ci + delta;
+    const total = (m.rows.length + 1) * cols;
+    if (idx >= total) { m.rows.push(Array(cols).fill("")); }       // Tab past the end → new row
+    if (idx < 0) idx = 0;
+    commit(m, Math.floor(idx / cols), idx % cols);
+  };
+  const navDown = (ri, ci) => {
+    const m = domModel();
+    if (ri >= m.rows.length + 0 && ri === trs().length - 1) m.rows.push(Array(m.header.length).fill(""));
+    commit(m, ri + 1, ci);
+  };
+  trs().forEach((tr, ri) => [...tr.children].forEach((cell, ci) => {
+    cell.contentEditable = "true";
+    cell.addEventListener("mousedown", (e) => { e.stopPropagation(); last = { r: ri, c: ci }; });
+    cell.addEventListener("focus", () => { last = { r: ri, c: ci }; });
+    cell.addEventListener("keydown", (e) => {
+      if (e.key === "Tab") { e.preventDefault(); e.stopPropagation(); nav(ri, ci, e.shiftKey ? -1 : 1); }
+      else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); navDown(ri, ci); }
+      else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cell.blur(); commitIfChanged(); }
+    });
+  }));
+  table.addEventListener("focusout", (e) => {
+    if (!table.contains(e.relatedTarget)) commitIfChanged();
+  });
+  // Hover toolbar.
+  const bar = document.createElement("div");
+  bar.className = "qv-tablebar";
+  const mk = (label, tip, fn) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = label; b.title = tip;
+    b.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
+    bar.appendChild(b);
+  };
+  const sep = () => { const s = document.createElement("span"); s.className = "sep"; bar.appendChild(s); };
+  mk("＋행", "아래에 행 추가", () => {
+    const m = domModel();
+    m.rows.splice(Math.max(0, last.r), 0, Array(m.header.length).fill(""));
+    commit(m, last.r + 1, last.c);
+  });
+  mk("−행", "현재 행 삭제", () => {
+    const m = domModel();
+    if (last.r >= 1 && m.rows.length > 1) { m.rows.splice(last.r - 1, 1); commit(m, Math.min(last.r, m.rows.length), last.c); }
+  });
+  mk("＋열", "오른쪽에 열 추가", () => {
+    const m = domModel(); const c = last.c;
+    m.header.splice(c + 1, 0, ""); m.aligns.splice(c + 1, 0, null);
+    m.rows.forEach((r) => r.splice(c + 1, 0, ""));
+    commit(m, last.r, c + 1);
+  });
+  mk("−열", "현재 열 삭제", () => {
+    const m = domModel();
+    if (m.header.length > 1) {
+      m.header.splice(last.c, 1); m.aligns.splice(last.c, 1);
+      m.rows.forEach((r) => r.splice(last.c, 1));
+      commit(m, last.r, Math.max(0, last.c - 1));
+    }
+  });
+  sep();
+  const setAlign = (a) => { const m = domModel(); m.aligns[last.c] = a; commit(m, last.r, last.c); };
+  mk("⇤", "이 열 왼쪽 정렬", () => setAlign("left"));
+  mk("↔", "이 열 가운데 정렬", () => setAlign("center"));
+  mk("⇥", "이 열 오른쪽 정렬", () => setAlign("right"));
+  sep();
+  mk("MD", "마크다운 원본 편집", () => placeCursor(view, el));
+  el.appendChild(bar);
+}
+
 class BlockWidget extends WidgetType {
   constructor(src, kind = "renderBlock") { super(); this.src = src; this.kind = kind; }
   eq(o) { return o.src === this.src && o.kind === this.kind; }
@@ -165,6 +320,8 @@ class BlockWidget extends WidgetType {
     el.innerHTML = (HOST[this.kind] || HOST.renderBlock)(this.src);
     HOST.resolveImages(el);
     HOST.typeset(el);
+    // Pipe tables get in-place cell editing + a hover toolbar (행/열/정렬).
+    if (/^\s*\|/.test(this.src)) enhanceTableWidget(el, view, this);
     el.addEventListener("mousedown", (e) => {
       // Tab switching inside a rendered tabset.
       const btn = e.target.closest(".tab-btn");
@@ -598,7 +755,25 @@ const theme = EditorView.theme({
   ".qv-bullet": { color: "#8a8a80" },
   ".qv-math": { color: "#333" },
   ".qv-math-block": { textAlign: "center", margin: "2px 0" },
-  ".qv-block": { margin: "0" },
+  ".qv-block": { margin: "0", position: "relative" },
+  // In-place table editing chrome.
+  ".qv-hastable td:focus, .qv-hastable th:focus": {
+    outline: "2px solid #ff6f61", outlineOffset: "-2px", borderRadius: "3px",
+  },
+  ".qv-tablebar": {
+    position: "absolute", top: "-32px", left: "0",
+    display: "flex", alignItems: "center", gap: "2px", padding: "3px",
+    background: "#fff", border: "1px solid #ddd9c3", borderRadius: "8px",
+    boxShadow: "0 2px 10px rgba(0,0,0,.08)", whiteSpace: "nowrap",
+    opacity: "0", pointerEvents: "none", transition: "opacity .15s", zIndex: "5",
+  },
+  ".qv-hastable:hover .qv-tablebar": { opacity: "1", pointerEvents: "auto" },
+  ".qv-tablebar button": {
+    border: "none", background: "transparent", borderRadius: "5px", cursor: "pointer",
+    font: "12px/1 -apple-system, system-ui, sans-serif", padding: "4px 7px", color: "#6b675c",
+  },
+  ".qv-tablebar button:hover": { background: "#f0eee2", color: "#2b2b26" },
+  ".qv-tablebar .sep": { width: "1px", height: "14px", background: "#e4e1cf", margin: "0 3px" },
 }, { dark: false });
 
 /* --------------------- vertical cursor movement ----------------------- */
