@@ -33,6 +33,7 @@
     transition: background .12s, color .12s, transform .06s;
   }
   .tbtn:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+  .tbtn.on { background: var(--accent); color: #fff; }
   .tbtn:active { transform: translateY(.5px); }
   .tbtn svg { width: 17px; height: 17px; }
   /* tooltip */
@@ -303,6 +304,8 @@
   }
   .dtool.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   .dtool.primary:hover { filter: brightness(1.05); background: var(--accent); }
+  .dtool.danger { color: var(--caution); border-color: color-mix(in srgb, var(--caution) 45%, var(--border-strong)); }
+  .dtool.danger:hover { background: color-mix(in srgb, var(--caution) 12%, var(--bg)); }
   .draw-tools .spacer { flex: 1; }
   .draw-surface {
     background: #fff; border: 1px solid var(--border); border-radius: 10px;
@@ -378,6 +381,11 @@
       외부 변경
     </button>
     <span id="status"></span>
+    <button class="tbtn" id="btn-source" data-tip="소스 보기 (원문)  ⌘/">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 4.5 2.5 8 6 11.5"/><path d="M10 4.5 13.5 8 10 11.5"/>
+      </svg>
+    </button>
     <button class="tbtn" id="btn-help" data-tip="도움말">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="8" cy="8" r="6.25"/><path d="M6.3 6.1a1.75 1.75 0 1 1 2.4 1.63c-.5.2-.7.5-.7 1.02V9.2"/><path d="M8 11.4h.01"/>
@@ -427,6 +435,7 @@
       <div class="tbl-hint">헤더 아래 줄에서 각 열의 정렬(⇤ ↔ ⇥)을 클릭으로 바꿀 수 있습니다 · Tab/Enter로 이동</div>
       <div id="tbl-grid" class="tbl-grid"></div>
       <div class="tbl-foot">
+        <button id="tbl-delete" class="dtool danger" hidden>표 삭제</button>
         <span class="spacer"></span>
         <button id="tbl-cancel" class="dtool">취소</button>
         <button id="tbl-apply" class="dtool primary">적용</button>
@@ -1315,9 +1324,10 @@ function describePath(p) {
 const tableModal = document.getElementById("table-modal");
 const ALIGN_GLYPH = { left: "⇤", center: "↔", right: "⇥", null: "—" };
 let tblState = null;   // { m, onApply }
-function openTableEditor(model, centered, onApply) {
-  tblState = { m: model, onApply };
+function openTableEditor(model, centered, onApply, onDelete) {
+  tblState = { m: model, onApply, onDelete };
   document.getElementById("tbl-centered").checked = !!centered;
+  document.getElementById("tbl-delete").hidden = !onDelete;
   renderTblGrid();
   tableModal.removeAttribute("hidden");
   requestAnimationFrame(() => { const i = tableModal.querySelector("input"); if (i) { i.focus(); i.select(); } });
@@ -1398,6 +1408,9 @@ document.getElementById("tbl-delcol").onclick = () => {
   m.rows.forEach((r) => r.splice(at, 1));
   renderTblGrid(tblState.last?.r ?? 0, Math.max(0, at - 1));
 };
+document.getElementById("tbl-delete").onclick = () => {
+  const done = tblState.onDelete; closeTableEditor(); if (done) done();
+};
 document.getElementById("tbl-cancel").onclick = closeTableEditor;
 document.getElementById("tbl-apply").onclick = () => {
   const m = collectTblGrid();
@@ -1433,9 +1446,9 @@ function settleCaret(anchor) {
 }
 
 // Editing an existing table (clicked in the document).
-function editTableFromWidget(pipeText, centered, replace) {
+function editTableFromWidget(pipeText, centered, replace, remove) {
   const m = QVEditor.parseTable(pipeText) || { header: ["", ""], aligns: [null, null], rows: [["", ""]] };
-  openTableEditor(m, centered, (text, center) => replace(text, center));
+  openTableEditor(m, centered, (text, center) => replace(text, center), remove ? () => remove() : null);
 }
 // Creating a new table (삽입 → 표).
 function newTableViaEditor() {
@@ -1505,6 +1518,16 @@ async function doHelp() {
   try { addTab(await api().help_doc()); } catch (_) {}
 }
 document.getElementById("btn-help").onclick = doHelp;
+// Whole-document source (raw markdown) toggle — top-right toolbar button.
+const btnSource = document.getElementById("btn-source");
+function toggleSource() {
+  if (!ed) return;
+  const on = !ed.isSource();
+  ed.setSource(on);
+  btnSource.classList.toggle("on", on);
+  btnSource.setAttribute("data-tip", on ? "위지윅으로 돌아가기  ⌘/" : "소스 보기 (원문)  ⌘/");
+}
+btnSource.onclick = toggleSource;
 
 // Insert menu (콜아웃·표·탭셋 …)
 const insertBtn = document.getElementById("btn-insert");
@@ -1660,6 +1683,7 @@ document.addEventListener("keydown", (e) => {
     const j = (i + (e.shiftKey ? -1 : 1) + tabs.length) % tabs.length;
     switchTo(tabs[j].id); return;
   }
+  if (e.key === "/") { e.preventDefault(); toggleSource(); return; }
   // Backup shortcuts for when focus is outside the editor (CM handles these when focused).
   if (ed && ed.view.hasFocus) return;
   if (k === "n") { e.preventDefault(); doNew(); }

@@ -5,18 +5,26 @@
    styles.css), rendered at docs/Posts/*.html — not invented. Base rhythm:
    13.6px/1.5 NanumMyeongjo, coral headings/links, purple inline code. */
 
+/* NanumMyeongjo scoped to Hangul via unicode-range. Putting a system sans
+   ahead of NanumMyeongjo in the font stack was unreliable: browsers substitute
+   their own Korean fallback for a missing Hangul glyph instead of continuing
+   the CSS list (worked in WKWebView, failed on the web). Restricting the face
+   to Hangul makes it deterministic — Latin resolves to the system sans, Hangul
+   always resolves to NanumMyeongjo, in every engine. */
 @font-face {
   font-family: 'NanumMyeongjo'; font-weight: normal; font-style: normal;
   src: url('fonts/NanumMyeongjo.ttf') format('truetype');
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF, U+3000-303F, U+FF00-FFEF;
 }
 @font-face {
   font-family: 'NanumMyeongjo'; font-weight: bold; font-style: normal;
   src: url('fonts/NanumMyeongjoBold.ttf') format('truetype');
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7A3, U+D7B0-D7FF, U+3000-303F, U+FF00-FFEF;
 }
 
 :root {
-  /* Latin → system sans (user pref); Hangul (missing there) → NanumMyeongjo. */
-  --serif: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, 'NanumMyeongjo', 'Nanum Myeongjo', serif;
+  /* Hangul → NanumMyeongjo (unicode-range above); Latin → system sans. */
+  --serif: 'NanumMyeongjo', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
   --mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --bg: #fcfcf7;            /* body background */
   --body: #555555;          /* base text */

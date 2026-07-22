@@ -262,10 +262,27 @@ function enhanceTableWidget(el, view, widget) {
     if (HOST.settleCaret) HOST.settleCaret(anchor);
     else view.dispatch({ selection: { anchor }, scrollIntoView: true });
   };
+  const remove = () => {
+    if (used || !el.isConnected) return;
+    const base = view.posAtDOM(el);
+    const doc = view.state.doc;
+    let rg = null;
+    for (const from of [base, base - 1, base + 1, base - 2, base + 2, base - 3, base + 3]) {
+      const to = from + widget.src.length;
+      if (from >= 0 && to <= doc.length && doc.sliceString(from, to) === widget.src) { rg = { from, to }; break; }
+    }
+    if (!rg) return;
+    used = true;
+    // Also swallow one trailing blank line so no double gap is left behind.
+    let to = rg.to;
+    if (doc.sliceString(to, to + 1) === "\n" && doc.sliceString(to + 1, to + 2) === "\n") to += 1;
+    view.dispatch({ changes: { from: rg.from, to, insert: "" }, selection: { anchor: rg.from } });
+    if (HOST.settleCaret) HOST.settleCaret(rg.from);
+  };
   el.addEventListener("mousedown", (e) => {
     if (e.target.closest("a")) return;
     e.preventDefault(); e.stopPropagation();
-    HOST.editTable(pipeText, centered, replace);
+    HOST.editTable(pipeText, centered, replace, remove);
   });
 }
 
@@ -368,7 +385,16 @@ const rawOverride = StateField.define({
   },
 });
 
+// Whole-document source mode: when on, the editor shows plain markdown with no
+// widgets/decorations at all (a "developer view"). Toggled from the toolbar.
+const setSourceMode = StateEffect.define();
+const sourceMode = StateField.define({
+  create: () => false,
+  update(v, tr) { for (const e of tr.effects) if (e.is(setSourceMode)) v = e.value; return v; },
+});
+
 function buildDecorations(state) {
+  if (state.field(sourceMode, false)) return { all: Decoration.none, atomic: Decoration.none };
   const doc = state.doc;
   const sel = state.selection;
   const decos = [];
@@ -637,7 +663,8 @@ function buildDecorations(state) {
 const livePreview = StateField.define({
   create: (state) => buildDecorations(state),
   update(value, tr) {
-    if (tr.docChanged || tr.selection || tr.effects.some((e) => e.is(setRawOverride))) {
+    if (tr.docChanged || tr.selection
+        || tr.effects.some((e) => e.is(setRawOverride) || e.is(setSourceMode))) {
       return buildDecorations(tr.state);
     }
     return value;
@@ -671,7 +698,7 @@ const MONO = "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Couri
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "#fcfcf7", color: "#555" },
   ".cm-scroller": {
-    fontFamily: "-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,'NanumMyeongjo','Nanum Myeongjo',serif",
+    fontFamily: "'NanumMyeongjo',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif",
     fontSize: "16px", lineHeight: "1.5", overflow: "auto",
   },
   ".cm-content": { padding: "44px 8px 200px", maxWidth: "820px", margin: "0 auto", caretColor: "#ff6f61" },
@@ -888,6 +915,7 @@ function create(parent, opts = {}) {
       bracketMatching(),
       markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [GFM] }),
       syntaxHighlighting(codeHighlight),
+      sourceMode,
       rawOverride,
       livePreview,
       theme,
@@ -928,6 +956,8 @@ function create(parent, opts = {}) {
     getState: () => view.state,
     setState: (s) => view.setState(s),
     focus: () => view.focus(),
+    isSource: () => view.state.field(sourceMode, false),
+    setSource: (on) => { view.dispatch({ effects: setSourceMode.of(!!on) }); view.focus(); },
     destroy: () => view.destroy(),
   };
 }
