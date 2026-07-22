@@ -390,6 +390,7 @@ if (window.__TAURI__) {
     poll: () => invoke("poll"),
     save: (text) => invoke("save_doc", { text }),
     save_as: (text) => invoke("save_as", { text }),
+    autosave: (text, hint) => invoke("autosave", { text, hint }),
     resolve_asset: (src) => invoke("resolve_asset", { src }),
     paste_image: () => invoke("paste_image"),
     save_drawing: (dataUrl) => invoke("save_drawing", { dataurl: dataUrl }),
@@ -520,6 +521,7 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
       return { saved: true, title: name, path: activePath || "web:" + name };
     },
     save_as: async function (text) { return this.save(text); },
+    autosave: async () => ({ skipped: "web" }),  // web: no silent writes (save = download fallback)
     resolve_asset: async (src) => {
       // Relative images resolve only when the file came from an opened folder.
       if (!src || /^(https?:|data:)/.test(src)) return null;
@@ -995,6 +997,50 @@ function syncTrack() {
 const NEW_DOC = '---\ntitle: "제목 없음"\n---\n\n';
 function doNew() { addTab({ text: NEW_DOC, title: "제목 없음", path: "" }); }
 
+/* ============ Autosave (Apple Notes-style) ============ */
+// An untitled document gets a real file in ~/Documents/Verdure as soon as it
+// has content, and keeps auto-saving afterwards — nothing silently disappears
+// when the app closes. Explicitly opened files are NOT auto-saved (⌘S as
+// usual); only documents born untitled carry the t.auto flag.
+let autosaveTimer = null;
+function scheduleAutosave() {
+  const t = activeTab(); if (!t) return;
+  if (t.path && !t.auto) return;              // a real opened file → manual save only
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(doAutosave, 1500);
+}
+function titleHint(text) {
+  let m = text.match(/^---\r?\n[\s\S]*?title:\s*["']?([^"'\n]+)["']?[\s\S]*?\r?\n---/);
+  if (m && m[1].trim() && m[1].trim() !== "제목 없음") return m[1].trim();
+  m = text.match(/^#{1,6}\s+(.+)$/m);
+  if (m && m[1].trim()) return m[1].trim();
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return `제목없음 ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}`;
+}
+function flashAutosaved() {
+  statusEl.textContent = "자동 저장됨";
+  setTimeout(() => { if (statusEl.textContent === "자동 저장됨") statusEl.textContent = ""; }, 2000);
+}
+async function doAutosave() {
+  const t = activeTab(); if (!t) return;
+  const text = ed.getValue();
+  try {
+    if (!t.path) {
+      if (!api().autosave) return;            // backend without autosave (pywebview)
+      if (!text.trim() || text === NEW_DOC) return;  // untouched template → no file
+      const r = await api().autosave(text, titleHint(text));
+      if (r && r.saved) {
+        t.savedText = text; t.path = r.path; t.title = r.title; t.auto = true;
+        activeTitle = r.title;
+        syncTrack(); renderTabs(); flashAutosaved();
+      }
+    } else if (t.auto) {
+      const r = await api().save(text);
+      if (r && r.saved) { t.savedText = text; refreshActiveDirty(); flashAutosaved(); }
+    }
+  } catch (_) {}
+}
+
 /* ============ Insert blocks (Quarto syntax) ============ */
 // A « » token marks where the cursor lands after insertion (stripped before insert).
 const CURSOR = "\u00ab\u00bb";
@@ -1374,7 +1420,7 @@ async function pollLoop() {
 window.addEventListener("pywebviewready", async () => {
   ed = QVEditor.create(document.getElementById("editor-host"), {
     doc: "",
-    onChange: () => { if (!loading) refreshActiveDirty(); },
+    onChange: () => { if (!loading) { refreshActiveDirty(); scheduleAutosave(); } },
     onSave: doSave,
     onPdf: doPdf,
     onOpen: doOpen,

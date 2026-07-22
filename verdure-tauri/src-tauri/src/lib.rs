@@ -174,6 +174,51 @@ async fn save_doc(state: State<'_, SharedState>, app: AppHandle, text: String) -
     }
 }
 
+// ~/Documents/Verdure — the app's default save location, created on demand.
+// Untitled documents are auto-saved here so nothing silently disappears.
+fn ensure_default_dir(app: &AppHandle) -> Option<PathBuf> {
+    let d = app.path().document_dir().ok()?.join("Verdure");
+    fs::create_dir_all(&d).ok()?;
+    Some(d)
+}
+
+fn sanitize_name(s: &str) -> String {
+    let t: String = s
+        .chars()
+        .map(|c| if "/\\:*?\"<>|".contains(c) { ' ' } else { c })
+        .collect();
+    let t = t.trim().to_string();
+    if t.is_empty() { "제목없음".into() } else { t.chars().take(60).collect() }
+}
+
+// Give a path-less document a real file in ~/Documents/Verdure (named from the
+// title/heading hint, uniquified). After this, plain save() keeps it updated.
+#[tauri::command]
+fn autosave(state: State<SharedState>, app: AppHandle, text: String, hint: String) -> Value {
+    if state.lock().unwrap().path.is_some() {
+        return json!({ "skipped": "has-path" });
+    }
+    let dir = match ensure_default_dir(&app) {
+        Some(d) => d,
+        None => return json!({ "error": "Documents 폴더를 찾을 수 없습니다" }),
+    };
+    let base = sanitize_name(&hint);
+    let mut path = dir.join(format!("{base}.qmd"));
+    let mut n = 2;
+    while path.exists() {
+        path = dir.join(format!("{base} {n}.qmd"));
+        n += 1;
+    }
+    if let Err(e) = fs::write(&path, &text) {
+        return json!({ "error": e.to_string() });
+    }
+    let mut st = state.lock().unwrap();
+    st.path = Some(path.clone());
+    st.mtimes
+        .insert(path.to_string_lossy().to_string(), mtime_of(&path.to_string_lossy()));
+    json!({ "saved": true, "title": title_of(&path), "path": path.to_string_lossy() })
+}
+
 #[tauri::command]
 async fn save_as(state: State<'_, SharedState>, app: AppHandle, text: String) -> Result<Value, ()> {
     let (dir, default) = {
@@ -185,7 +230,7 @@ async fn save_as(state: State<'_, SharedState>, app: AppHandle, text: String) ->
             .as_ref()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .or_else(|| st.folder.as_ref().map(PathBuf::from))
-            .or_else(|| app.path().document_dir().ok());
+            .or_else(|| ensure_default_dir(&app));
         let default = st
             .path
             .as_ref()
@@ -457,6 +502,7 @@ pub fn run() {
             poll,
             save_doc,
             save_as,
+            autosave,
             open_file,
             open_folder,
             resolve_asset,
