@@ -216,10 +216,25 @@ function enhanceTableWidget(el, view, widget) {
     });
     return m;
   };
-  const range = () => { const from = view.posAtDOM(el); return { from, to: from + widget.src.length }; };
+  // A widget instance may commit AT MOST once: any doc change rebuilds the
+  // widget, and the OLD one's focusout still fires afterwards — committing
+  // again from its detached DOM would write the table at a garbage position
+  // (posAtDOM on a removed node), duplicating/fragmenting the table.
+  let dead = false;
+  const range = () => {
+    if (dead || !el.isConnected) return null;
+    const from = view.posAtDOM(el);
+    const to = from + widget.src.length;
+    // The doc must still contain exactly this widget's source there.
+    if (view.state.doc.sliceString(from, to) !== widget.src) return null;
+    return { from, to };
+  };
   // Rewrite the doc and put the caret in cell (r, c) of the rebuilt widget.
   const commit = (m, r, c) => {
-    const { from, to } = range();
+    const rg = range();
+    if (!rg) return;
+    dead = true;
+    const { from, to } = rg;
     const text = serializeTable(m);
     view.dispatch({ changes: { from, to, insert: text } });
     if (r == null) return;
@@ -237,8 +252,13 @@ function enhanceTableWidget(el, view, widget) {
     }));
   };
   const commitIfChanged = () => {
+    if (dead || !el.isConnected) return;
     const m = domModel();
-    if (serializeTable(m) !== widget.src.trim()) commit(m, null, 0);
+    // Compare canonical forms: whitespace padding differences between the
+    // hand-written source and our serializer must not count as a change, or
+    // merely clicking a cell and leaving would rewrite (and rebuild) the table.
+    const cur = parseTable(widget.src);
+    if (!cur || serializeTable(m) !== serializeTable(cur)) commit(m, null, 0);
   };
   const nav = (ri, ci, delta) => {
     const m = domModel();
