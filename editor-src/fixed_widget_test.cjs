@@ -16,21 +16,19 @@ const { webkit } = require("playwright");
   // 1) click on table border area (not a cell): widget must survive
   const tb = await page.evaluate(()=>{const t=document.querySelector(".qv-hastable table");const r=t.getBoundingClientRect();return {x:r.x+r.width-2,y:r.y+2};});
   await page.mouse.click(tb.x, tb.y); await page.waitForTimeout(300);
+  out.borderClickOpensModal = await page.evaluate(()=>!document.getElementById("table-modal").hasAttribute("hidden"));
+  await page.keyboard.press("Escape"); await page.waitForTimeout(250);
   out.afterBorderClick = await widgets();
   // 2) put caret on first line, arrow down through table+image to last line
   await page.evaluate(()=>{ed.view.focus();ed.view.dispatch({selection:{anchor:0}});});
   for (let i=0;i<8;i++){ await page.keyboard.press("ArrowDown"); await page.waitForTimeout(80); }
   out.afterArrows = await page.evaluate(()=>{const v=ed.view;const l=v.state.doc.lineAt(v.state.selection.main.head);return {line:l.number, text:l.text.slice(0,10)};});
   out.widgetsAfterArrows = await widgets();
-  // 3) MD button: reveal source; then move caret out → widget returns
+  // 3) clicking the table opens the spreadsheet modal (not raw source)
   const cellBox=await page.evaluate(()=>{const c=document.querySelector(".qv-hastable td");const r=c.getBoundingClientRect();return {x:r.x+5,y:r.y+5};});
-  await page.mouse.click(cellBox.x, cellBox.y); await page.waitForTimeout(400); // click cell → bar docks
-  const mdClicked = await page.evaluate(()=>{const b=[...document.querySelectorAll("#ctxbar button")].find(b=>b.textContent==="MD"); if(!b)return false; b.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true})); return true;});
-  await page.waitForTimeout(300);
-  out.mdClicked = mdClicked;
-  out.rawShown = (await widgets()).rawPipes;
-  await page.evaluate(()=>{const v=ed.view;v.dispatch({selection:{anchor:0}});});
-  await page.waitForTimeout(300);
+  await page.mouse.click(cellBox.x, cellBox.y); await page.waitForTimeout(400);
+  out.modalOpens = await page.evaluate(()=>!document.getElementById("table-modal").hasAttribute("hidden"));
+  await page.keyboard.press("Escape"); await page.waitForTimeout(300);
   out.widgetBackAfterLeave = await widgets();
   console.log(JSON.stringify(out,null,1));
   await browser.close();

@@ -31,6 +31,7 @@ let HOST = {
   resolveImages: async () => {},
   ctxMount: () => {},
   ctxClear: () => {},
+  editTable: null,   // host-provided spreadsheet modal (src, replace) — see index.html
 };
 
 /* ------------------------------ widgets ------------------------------ */
@@ -220,267 +221,46 @@ function placeCaretEnd(node) {
 // contenteditable, Tab/Enter move between cells, and a hover toolbar adds or
 // removes rows/columns and sets column alignment. Every operation rewrites the
 // markdown source, so the document stays plain GFM.
+// Tables edit through the host's spreadsheet modal (HOST.editTable): any
+// click on the fixed table widget opens it prefilled; "적용" rewrites the
+// markdown (preserving an alignment-wrapper div via prefix/suffix lines).
+// No in-place cell inputs — a modal never fights CodeMirror or WKWebView
+// for focus/selection, which is what made in-place editing so fragile.
 function enhanceTableWidget(el, view, widget) {
   const table = el.querySelector("table");
-  if (!table) return;
+  if (!table || !HOST.editTable) return;
   el.classList.add("qv-hastable");
-  let last = { r: 0, c: 0 };
-  // The widget source may wrap the pipe table in non-table lines (an alignment
-  // div's ::: fences). Commits rewrite only the pipe block, preserving them.
   const srcLines = widget.src.split("\n");
   let firstPipe = srcLines.findIndex((l) => l.trim().startsWith("|"));
   let lastPipe = srcLines.length - 1;
   while (lastPipe >= 0 && !srcLines[lastPipe].trim().startsWith("|")) lastPipe--;
   if (firstPipe < 0 || lastPipe < firstPipe) return;
   const prefix = srcLines.slice(0, firstPipe), suffix = srcLines.slice(lastPipe + 1);
-  const compose = (tableText) => [...prefix, tableText, ...suffix].join("\n");
+  const pipeText = srcLines.slice(firstPipe, lastPipe + 1).join("\n");
   const centered = /^\s*:{3,}\s*\{[^}]*\.center/.test(widget.src);
-  const trs = () => [...table.querySelectorAll("tr")];
-  // Current model = original aligns + whatever is in the DOM cells right now.
-  const domModel = () => {
-    const m = parseTable(widget.src) || { header: [], aligns: [], rows: [] };
-    trs().forEach((tr, ri) => {
-      [...tr.children].forEach((cell, ci) => {
-        const inp = cell.querySelector("input.qv-cell-input");
-        const v = inp ? inp.value : cell.textContent;
-        if (ri === 0) m.header[ci] = v;
-        else (m.rows[ri - 1] || (m.rows[ri - 1] = []))[ci] = v;
-      });
-    });
-    return m;
-  };
-  // A widget instance may commit AT MOST once: any doc change rebuilds the
-  // widget, and the OLD one's focusout still fires afterwards — committing
-  // again from its detached DOM would write the table at a garbage position
-  // (posAtDOM on a removed node), duplicating/fragmenting the table.
-  let dead = false;
-  const range = () => {
-    if (dead || !el.isConnected) return null;
+  let used = false;   // a widget instance may rewrite the doc at most once
+  const replace = (tableText, center) => {
+    if (used || !el.isConnected) return;
     const base = view.posAtDOM(el);
     const doc = view.state.doc;
-    // posAtDOM can drift a character or two for block widgets in WKWebView —
-    // hunt for the exact source near the reported position before giving up.
+    let rg = null;
     for (const from of [base, base - 1, base + 1, base - 2, base + 2, base - 3, base + 3]) {
       const to = from + widget.src.length;
-      if (from >= 0 && to <= doc.length && doc.sliceString(from, to) === widget.src) return { from, to };
+      if (from >= 0 && to <= doc.length && doc.sliceString(from, to) === widget.src) { rg = { from, to }; break; }
     }
-    return null;
-  };
-  // If a commit has to bail (stale widget, position mismatch), the DOM cells
-  // may already hold edits the document never received — re-render from the
-  // source so the screen never lies about the file.
-  const resync = () => {
-    try {
-      el.querySelector(".qv-tablebar")?.remove();
-      el.classList.remove("qv-hastable", "qv-active");
-      el.innerHTML = HOST.renderBlock(widget.src);
-      HOST.typeset(el);
-      enhanceTableWidget(el, view, widget);
-    } catch (_) {}
-  };
-  // Rewrite the doc and put the caret in cell (r, c) of the rebuilt widget.
-  const commit = (m, r, c) => {
-    const rg = range();
-    if (!rg) { resync(); return; }
-    dead = true;
-    const { from, to } = rg;
-    const text = compose(serializeTable(m));
-    view.dispatch({ changes: { from, to, insert: text } });
-    if (r == null) return;
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      try {
-        let best = null, bd = Infinity;
-        for (const t of view.dom.querySelectorAll(".qv-hastable table")) {
-          const d = Math.abs(view.posAtDOM(t.closest(".qv-block")) - from);
-          if (d < bd) { bd = d; best = t; }
-        }
-        const tr = best && [...best.querySelectorAll("tr")][r];
-        const cell = tr && tr.children[Math.min(c, tr.children.length - 1)];
-        // Synthetic mousedown routes through the NEW widget's cell handler,
-        // which opens its inline <input> editor.
-        if (cell) cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-      } catch (_) {}
-    }));
-  };
-  const commitIfChanged = () => {
-    if (dead || !el.isConnected) return;
-    const m = domModel();
-    // Compare canonical forms: whitespace padding differences between the
-    // hand-written source and our serializer must not count as a change, or
-    // merely clicking a cell and leaving would rewrite (and rebuild) the table.
-    const cur = parseTable(widget.src);
-    if (!cur || serializeTable(m) !== serializeTable(cur)) commit(m, null, 0);
-  };
-  const nav = (ri, ci, delta) => {
-    const m = domModel();
-    const cols = Math.max(m.header.length, 1);
-    let idx = ri * cols + ci + delta;
-    const total = (m.rows.length + 1) * cols;
-    if (idx >= total) { m.rows.push(Array(cols).fill("")); }       // Tab past the end → new row
-    if (idx < 0) idx = 0;
-    commit(m, Math.floor(idx / cols), idx % cols);
-  };
-  const navDown = (ri, ci) => {
-    const m = domModel();
-    if (ri >= m.rows.length + 0 && ri === trs().length - 1) m.rows.push(Array(m.header.length).fill(""));
-    commit(m, ri + 1, ci);
-  };
-  // Cell editing uses a swapped-in <input>, NOT contenteditable. A real mouse
-  // click in a contenteditable cell puts the BROWSER selection inside the
-  // widget; CodeMirror's selection observer maps that to the widget's document
-  // position and reveals the table's raw source — the table "runs away" the
-  // moment you click it. An <input>'s selection is internal to the control and
-  // invisible to the document selection, so CM stays untouched.
-  const startEdit = (cell, ri, ci) => {
-    if (dead || cell.querySelector("input.qv-cell-input")) return;
-    last = { r: ri, c: ci };
-    const val = cellText(cell);
-    el.classList.add("qv-active");
-    dockCtx(bar, "표", bar);                  // dock controls in the fixed slot
-    cell.classList.add("qv-editing");
-    cell.textContent = "";
-    const inp = document.createElement("input");
-    inp.className = "qv-cell-input";
-    inp.value = val;
-    cell.appendChild(inp);
-    inp.focus();
-    try { inp.setSelectionRange(val.length, val.length); } catch (_) {}
-    const close = () => {
-      if (!inp.isConnected) return;
-      const v = inp.value;
-      inp.remove(); cell.classList.remove("qv-editing"); cell.textContent = v;
-      el.classList.remove("qv-active");
-      // Keep the slot while a nav/commit is in flight (it re-docks on restore);
-      // a terminal close clears it on the next tick if nothing re-docked.
-      setTimeout(() => { if (!document.querySelector(".qv-cell-input")) undockCtx(bar); }, 250);
-    };
-    // Right after the click sequence WKWebView can yank focus back to the
-    // editable host, which would blur-close the input the instant it opens.
-    // For a short grace period, take the focus back instead of closing.
-    const born = Date.now();
-    const ensure = () => {
-      if (!inp.isConnected) return;
-      if (document.activeElement !== inp && Date.now() - born < 250) { inp.focus(); requestAnimationFrame(ensure); }
-    };
-    requestAnimationFrame(ensure);
-    inp.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "Tab") { e.preventDefault(); close(); nav(ri, ci, e.shiftKey ? -1 : 1); }
-      else if (e.key === "Enter") { e.preventDefault(); close(); navDown(ri, ci); }
-      else if (e.key === "Escape") { e.preventDefault(); close(); commitIfChanged(); view.focus(); }
-    });
-    inp.addEventListener("mousedown", (e) => e.stopPropagation());
-    inp.addEventListener("blur", () => {
-      // Deferred: Tab/Enter close the input themselves before this runs.
-      setTimeout(() => {
-        if (!inp.isConnected) return;
-        if (Date.now() - born < 250) { inp.focus(); return; }  // grace: reclaim stolen focus
-        close(); commitIfChanged();
-      }, 0);
-    });
-  };
-  const cellText = (cell) => {
-    const i = cell.querySelector("input.qv-cell-input");
-    return i ? i.value : cell.textContent;
-  };
-  trs().forEach((tr, ri) => [...tr.children].forEach((cell, ci) => {
-    // Defer past the click sequence so WKWebView's own mouseup/focus handling
-    // can't immediately undo the input focus.
-    cell.addEventListener("mousedown", (e) => {
-      e.preventDefault(); e.stopPropagation();
-      setTimeout(() => startEdit(cell, ri, ci), 0);
-    });
-    cell.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
-  }));
-  // Clicks that land on the row/table chrome (between or beside cells) route to
-  // the nearest cell in that row, so the whole row is a click target.
-  table.addEventListener("mousedown", (e) => {
-    if (e.target.closest("td, th, input, button")) return;
-    e.preventDefault(); e.stopPropagation();
-    const rows = trs();
-    let row = e.target.closest("tr");
-    if (!row) {
-      let bd = Infinity;
-      for (const r of rows) {
-        const b = r.getBoundingClientRect();
-        const d = e.clientY < b.top ? b.top - e.clientY : e.clientY > b.bottom ? e.clientY - b.bottom : 0;
-        if (d < bd) { bd = d; row = r; }
-      }
-    }
-    if (!row) return;
-    let cell = null, bd = Infinity;
-    for (const c of row.children) {
-      const b = c.getBoundingClientRect();
-      const d = e.clientX < b.left ? b.left - e.clientX : e.clientX > b.right ? e.clientX - b.right : 0;
-      if (d < bd) { bd = d; cell = c; }
-    }
-    if (cell) {
-      const ri = rows.indexOf(row), ci = [...row.children].indexOf(cell);
-      setTimeout(() => startEdit(cell, ri, ci), 0);
-    }
-  });
-  // Hover toolbar.
-  const bar = document.createElement("div");
-  bar.className = "qv-tablebar";
-  const mk = (label, tip, fn) => {
-    const b = document.createElement("button");
-    b.type = "button"; b.textContent = label; b.title = tip;
-    b.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
-    bar.appendChild(b);
-    return b;
-  };
-  const sep = () => { const s = document.createElement("span"); s.className = "sep"; bar.appendChild(s); };
-  mk("＋행", "아래에 행 추가", () => {
-    const m = domModel();
-    m.rows.splice(Math.max(0, last.r), 0, Array(m.header.length).fill(""));
-    commit(m, last.r + 1, last.c);
-  });
-  mk("−행", "현재 행 삭제", () => {
-    const m = domModel();
-    if (last.r >= 1 && m.rows.length > 1) { m.rows.splice(last.r - 1, 1); commit(m, Math.min(last.r, m.rows.length), last.c); }
-  });
-  mk("＋열", "오른쪽에 열 추가", () => {
-    const m = domModel(); const c = last.c;
-    m.header.splice(c + 1, 0, ""); m.aligns.splice(c + 1, 0, null);
-    m.rows.forEach((r) => r.splice(c + 1, 0, ""));
-    commit(m, last.r, c + 1);
-  });
-  mk("−열", "현재 열 삭제", () => {
-    const m = domModel();
-    if (m.header.length > 1) {
-      m.header.splice(last.c, 1); m.aligns.splice(last.c, 1);
-      m.rows.forEach((r) => r.splice(last.c, 1));
-      commit(m, last.r, Math.max(0, last.c - 1));
-    }
-  });
-  sep();
-  const setAlign = (a) => { const m = domModel(); m.aligns[last.c] = a; commit(m, last.r, last.c); };
-  mk("⇤", "이 열 왼쪽 정렬", () => setAlign("left"));
-  mk("↔", "이 열 가운데 정렬", () => setAlign("center"));
-  mk("⇥", "이 열 오른쪽 정렬", () => setAlign("right"));
-  sep();
-  // Whole-table centering "like images": toggles a ::: {.center} wrapper div
-  // (Quarto div syntax — on the blog, `.center table{margin:0 auto}` CSS
-  // renders it the same way).
-  const cb = mk("가운데", centered ? "가운데 정렬 해제" : "표를 가운데 정렬", () => {
-    const rg = range();
     if (!rg) return;
-    const m = domModel();
-    dead = true;
-    const tableText = serializeTable(m);
-    const text = centered ? tableText : "::: {.center}\n" + tableText + "\n:::";
+    used = true;
+    let text;
+    if (center && !centered) text = "::: {.center}\n" + tableText + "\n:::";
+    else if (!center && centered) text = tableText;
+    else text = [...prefix, tableText, ...suffix].join("\n");
     view.dispatch({ changes: { from: rg.from, to: rg.to, insert: text } });
+  };
+  el.addEventListener("mousedown", (e) => {
+    if (e.target.closest("a")) return;
+    e.preventDefault(); e.stopPropagation();
+    HOST.editTable(pipeText, centered, replace);
   });
-  if (centered) cb.classList.add("on");
-  sep();
-  mk("MD", "마크다운 원본 편집 (커서가 표를 벗어나면 복귀)", () => {
-    const rg = range();
-    if (!rg) return;
-    view.dispatch({ effects: setRawOverride.of(rg), selection: { anchor: rg.from } });
-    view.focus();
-  });
-  // The bar lives in the app's FIXED context slot (never floats over content):
-  // docked while a cell is being edited, cleared when editing truly ends.
 }
 
 class BlockWidget extends WidgetType {
@@ -969,33 +749,13 @@ const theme = EditorView.theme({
   // In-place table editing chrome.
   // Empty cells must stay clickable: give them real size and an invisible
   // filler so a fresh table isn't a stack of hairlines.
-  ".qv-hastable td, .qv-hastable th": { minWidth: "3.5em", height: "1.7em", cursor: "text" },
+  ".qv-hastable": { cursor: "pointer" },
+  ".qv-hastable:hover table": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "4px" },
+  ".qv-hastable td, .qv-hastable th": { minWidth: "3.5em", height: "1.7em" },
   ".qv-hastable td:empty::before, .qv-hastable th:empty::before": { content: '"\\00a0"' },
-  ".qv-hastable td.qv-editing, .qv-hastable th.qv-editing": {
-    outline: "2px solid #ff6f61", outlineOffset: "-2px", borderRadius: "3px",
-  },
-  ".qv-cell-input": {
-    font: "inherit", color: "inherit", background: "transparent",
-    border: "none", outline: "none", padding: "0", margin: "0",
-    width: "100%", minWidth: "3ch",
-  },
   // The toolbar is ALWAYS present above the table (in flow, no hover games —
   // it kept "hiding" mid-interaction). Dimmed when idle, full when the table
   // is hovered or a cell is being edited.
-  ".qv-tablebar": {
-    display: "inline-flex", alignItems: "center", gap: "2px", padding: "3px",
-    margin: "0 0 6px", background: "#fff", border: "1px solid #ddd9c3",
-    borderRadius: "8px", boxShadow: "0 1px 6px rgba(0,0,0,.05)",
-    whiteSpace: "nowrap", opacity: "0.45", transition: "opacity .15s",
-  },
-  ".qv-hastable:hover .qv-tablebar": { opacity: "1" },
-  ".qv-hastable.qv-active .qv-tablebar": { opacity: "1" },
-  ".qv-tablebar button": {
-    border: "none", background: "transparent", borderRadius: "5px", cursor: "pointer",
-    font: "12px/1 -apple-system, system-ui, sans-serif", padding: "4px 7px", color: "#6b675c",
-  },
-  ".qv-tablebar button:hover": { background: "#f0eee2", color: "#2b2b26" },
-  ".qv-tablebar .sep": { width: "1px", height: "14px", background: "#e4e1cf", margin: "0 3px" },
 }, { dark: false });
 
 /* --------------------- vertical cursor movement ----------------------- */
@@ -1057,6 +817,7 @@ function create(parent, opts = {}) {
     typeset: opts.typeset || HOST.typeset,
     ctxMount: opts.ctxMount || HOST.ctxMount,
     ctxClear: opts.ctxClear || HOST.ctxClear,
+    editTable: opts.editTable || HOST.editTable,
     resolveImages: opts.resolveImages || HOST.resolveImages,
   };
 
@@ -1164,4 +925,4 @@ function create(parent, opts = {}) {
   };
 }
 
-export { create };
+export { create, parseTable, serializeTable };

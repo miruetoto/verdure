@@ -205,6 +205,33 @@
   .tree-row .tn { overflow: hidden; text-overflow: ellipsis; }
   .tree-row.dir { color: var(--fg); }
 
+  /* ---- spreadsheet table editor modal ---- */
+  .tbl-panel {
+    background: var(--toolbar); border: 1px solid var(--border-strong);
+    border-radius: 14px; padding: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    max-width: min(92vw, 900px); max-height: 84vh; display: flex; flex-direction: column; gap: 8px;
+  }
+  .tbl-tools, .tbl-foot { display: flex; align-items: center; gap: 6px; }
+  .tbl-center { font: 500 12.5px/1 -apple-system, system-ui, sans-serif; color: var(--fg); display: inline-flex; align-items: center; gap: 5px; }
+  .tbl-hint { font: 400 11px/1.3 -apple-system, system-ui, sans-serif; color: var(--muted); }
+  .tbl-grid { overflow: auto; flex: 1; min-height: 0; }
+  .tbl-grid table { border-collapse: collapse; }
+  .tbl-grid td { border: 1px solid var(--border-strong); padding: 0; background: var(--bg); }
+  .tbl-grid tr.hdr td { background: color-mix(in srgb, var(--toolbar) 70%, var(--bg)); }
+  .tbl-grid tr.hdr input { font-weight: 700; }
+  .tbl-grid input {
+    border: none; outline: none; background: transparent; color: var(--fg);
+    font: 500 13.5px/1.4 -apple-system, system-ui, sans-serif; padding: 8px 10px;
+    min-width: 7em; width: 100%; box-sizing: border-box;
+  }
+  .tbl-grid input:focus { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+  .tbl-grid tr.aligns td { text-align: center; background: color-mix(in srgb, var(--toolbar) 45%, var(--bg)); }
+  .tbl-grid tr.aligns button {
+    border: none; background: transparent; cursor: pointer; width: 100%;
+    font: 600 12px/1 -apple-system, system-ui, sans-serif; color: var(--muted); padding: 4px 0;
+  }
+  .tbl-grid tr.aligns button:hover { color: var(--accent); }
+
   /* ---- insert dropdown menu ---- */
   .menu {
     position: fixed; z-index: 100; min-width: 172px;
@@ -367,6 +394,27 @@
   </div>
 
   <!-- 그림판 팝업 -->
+  <!-- Spreadsheet-style table editor: edit in a grid, 적용 writes markdown. -->
+  <div id="table-modal" class="overlay" hidden>
+    <div class="tbl-panel">
+      <div class="tbl-tools">
+        <button id="tbl-addrow" class="dtool">＋행</button>
+        <button id="tbl-delrow" class="dtool">−행</button>
+        <button id="tbl-addcol" class="dtool">＋열</button>
+        <button id="tbl-delcol" class="dtool">−열</button>
+        <span class="spacer"></span>
+        <label class="tbl-center"><input type="checkbox" id="tbl-centered"> 표 가운데 정렬</label>
+      </div>
+      <div class="tbl-hint">헤더 아래 줄에서 각 열의 정렬(⇤ ↔ ⇥)을 클릭으로 바꿀 수 있습니다 · Tab/Enter로 이동</div>
+      <div id="tbl-grid" class="tbl-grid"></div>
+      <div class="tbl-foot">
+        <span class="spacer"></span>
+        <button id="tbl-cancel" class="dtool">취소</button>
+        <button id="tbl-apply" class="dtool primary">적용</button>
+      </div>
+    </div>
+  </div>
+
   <div id="draw-modal" class="overlay" hidden>
     <div class="draw-panel">
       <div class="draw-tools">
@@ -1085,6 +1133,7 @@ const SNIPPETS = {
   "callout-important": "::: {.callout-important}\n«»\n:::\n",
 };
 function insertBlock(key) {
+  if (key === "table") { if (ed) newTableViaEditor(); return; }
   const snip = SNIPPETS[key]; if (!snip || !ed) return;
   const view = ed.view;
   const sel = view.state.selection.main;
@@ -1101,22 +1150,6 @@ function insertBlock(key) {
     scrollIntoView: true,
   });
   view.focus();
-  // Tables render as fixed widgets (the caret can't sit inside them), so start
-  // editing immediately: open the first body cell's inline input.
-  if (key === "table") {
-    const near = sel.from + lead.length;
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      try {
-        let best = null, bd = Infinity;
-        for (const t of view.dom.querySelectorAll(".qv-hastable table")) {
-          const d = Math.abs(view.posAtDOM(t.closest(".qv-block")) - near);
-          if (d < bd) { bd = d; best = t; }
-        }
-        const cell = best && best.querySelector("td");
-        if (cell) cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-      } catch (_) {}
-    }));
-  }
 }
 
 async function doOpen() {
@@ -1256,6 +1289,141 @@ window.QV = {
 function describePath(p) {
   return p && p.startsWith("data:") ? "문서에 직접 포함됨" : p;
 }
+/* ============ Spreadsheet table editor (modal) ============ */
+// Edit in a plain-HTML grid completely outside CodeMirror (no focus wars),
+// then 적용 serializes back to GFM markdown. Opened by clicking a rendered
+// table, or by 삽입 → 표 for a new one.
+const tableModal = document.getElementById("table-modal");
+const ALIGN_GLYPH = { left: "⇤", center: "↔", right: "⇥", null: "—" };
+let tblState = null;   // { m, onApply }
+function openTableEditor(model, centered, onApply) {
+  tblState = { m: model, onApply };
+  document.getElementById("tbl-centered").checked = !!centered;
+  renderTblGrid();
+  tableModal.removeAttribute("hidden");
+  requestAnimationFrame(() => { const i = tableModal.querySelector("input"); if (i) { i.focus(); i.select(); } });
+}
+function closeTableEditor() { tableModal.setAttribute("hidden", ""); tblState = null; if (ed) ed.focus(); }
+function collectTblGrid() {
+  // Read every grid input back into the model before structural ops / apply.
+  const m = tblState.m;
+  tableModal.querySelectorAll("input[data-r]").forEach((inp) => {
+    const r = +inp.dataset.r, c = +inp.dataset.c;
+    if (r === 0) m.header[c] = inp.value;
+    else (m.rows[r - 1] || (m.rows[r - 1] = []))[c] = inp.value;
+  });
+  return m;
+}
+function renderTblGrid(focusR, focusC) {
+  const m = tblState.m;
+  const cols = Math.max(m.header.length, 1);
+  const host = document.getElementById("tbl-grid");
+  host.innerHTML = "";
+  const tb = document.createElement("table");
+  const mkRow = (vals, r, cls) => {
+    const tr = document.createElement("tr"); if (cls) tr.className = cls;
+    for (let c = 0; c < cols; c++) {
+      const td = document.createElement("td");
+      const inp = document.createElement("input");
+      inp.value = vals[c] ?? ""; inp.dataset.r = r; inp.dataset.c = c;
+      inp.addEventListener("focus", () => { tblState.last = { r, c }; });
+      td.appendChild(inp); tr.appendChild(td);
+    }
+    return tr;
+  };
+  tb.appendChild(mkRow(m.header, 0, "hdr"));
+  const al = document.createElement("tr"); al.className = "aligns";
+  for (let c = 0; c < cols; c++) {
+    const td = document.createElement("td");
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = ALIGN_GLYPH[m.aligns[c] ?? "null"] + " 정렬";
+    b.title = "이 열 정렬 바꾸기";
+    b.onclick = () => {
+      const order = [null, "left", "center", "right"];
+      m.aligns[c] = order[(order.indexOf(m.aligns[c] ?? null) + 1) % order.length];
+      collectTblGrid(); renderTblGrid(tblState.last?.r, tblState.last?.c);
+    };
+    td.appendChild(b); al.appendChild(td);
+  }
+  tb.appendChild(al);
+  m.rows.forEach((row, i) => tb.appendChild(mkRow(row, i + 1)));
+  host.appendChild(tb);
+  if (focusR != null) {
+    const inp = host.querySelector(`input[data-r="${focusR}"][data-c="${Math.min(focusC ?? 0, cols - 1)}"]`);
+    if (inp) inp.focus();
+  }
+}
+document.getElementById("tbl-addrow").onclick = () => {
+  const m = collectTblGrid(); const at = tblState.last ? Math.max(0, tblState.last.r) : m.rows.length;
+  m.rows.splice(at, 0, Array(m.header.length).fill(""));
+  renderTblGrid(at + 1, tblState.last?.c ?? 0);
+};
+document.getElementById("tbl-delrow").onclick = () => {
+  const m = collectTblGrid();
+  if (m.rows.length <= 1) return;
+  const at = Math.min(Math.max((tblState.last?.r ?? m.rows.length) - 1, 0), m.rows.length - 1);
+  m.rows.splice(at, 1);
+  renderTblGrid(Math.min(at + 1, m.rows.length), tblState.last?.c ?? 0);
+};
+document.getElementById("tbl-addcol").onclick = () => {
+  const m = collectTblGrid(); const at = (tblState.last?.c ?? m.header.length - 1) + 1;
+  m.header.splice(at, 0, ""); m.aligns.splice(at, 0, null);
+  m.rows.forEach((r) => r.splice(at, 0, ""));
+  renderTblGrid(tblState.last?.r ?? 0, at);
+};
+document.getElementById("tbl-delcol").onclick = () => {
+  const m = collectTblGrid();
+  if (m.header.length <= 1) return;
+  const at = Math.min(tblState.last?.c ?? m.header.length - 1, m.header.length - 1);
+  m.header.splice(at, 1); m.aligns.splice(at, 1);
+  m.rows.forEach((r) => r.splice(at, 1));
+  renderTblGrid(tblState.last?.r ?? 0, Math.max(0, at - 1));
+};
+document.getElementById("tbl-cancel").onclick = closeTableEditor;
+document.getElementById("tbl-apply").onclick = () => {
+  const m = collectTblGrid();
+  const centered = document.getElementById("tbl-centered").checked;
+  const text = QVEditor.serializeTable(m);
+  const done = tblState.onApply;
+  closeTableEditor();
+  done(text, centered);
+};
+tableModal.addEventListener("mousedown", (e) => { if (e.target === tableModal) closeTableEditor(); });
+document.addEventListener("keydown", (e) => {
+  if (tableModal.hasAttribute("hidden")) return;
+  if (e.key === "Escape") { e.preventDefault(); closeTableEditor(); }
+  if (e.key === "Enter" && e.target.matches("#tbl-grid input")) {
+    e.preventDefault();
+    const r = +e.target.dataset.r, c = +e.target.dataset.c;
+    const next = tableModal.querySelector(`input[data-r="${r + 1}"][data-c="${c}"]`);
+    if (next) next.focus();
+    else { document.getElementById("tbl-addrow").click(); }
+  }
+});
+// Editing an existing table (clicked in the document).
+function editTableFromWidget(pipeText, centered, replace) {
+  const m = QVEditor.parseTable(pipeText) || { header: ["", ""], aligns: [null, null], rows: [["", ""]] };
+  openTableEditor(m, centered, (text, center) => replace(text, center));
+}
+// Creating a new table (삽입 → 표).
+function newTableViaEditor() {
+  openTableEditor({ header: ["열 1", "열 2"], aligns: [null, null], rows: [["", ""]] }, false, (text, center) => {
+    const view = ed.view;
+    const sel = view.state.selection.main;
+    const line = view.state.doc.lineAt(sel.from);
+    const before = view.state.doc.sliceString(line.from, sel.from);
+    const lead = before.trim() === "" ? "" : "\n\n";
+    const body = center ? "::: {.center}\n" + text + "\n:::" : text;
+    const insert = lead + body + "\n";
+    view.dispatch({
+      changes: { from: sel.from, to: sel.to, insert },
+      selection: { anchor: sel.from + insert.length },
+      scrollIntoView: true,
+    });
+    view.focus();
+  });
+}
+
 let toastTimer = null;
 function flash(msg) {
   const el = document.getElementById("toast"); el.textContent = msg; el.classList.add("show");
@@ -1485,6 +1653,7 @@ window.addEventListener("pywebviewready", async () => {
       const c = document.getElementById("ctxbar");
       c.innerHTML = ""; c.hidden = true;
     },
+    editTable: editTableFromWidget,
   });
   // ⌘V로 스크린샷/이미지 붙여넣기: 클립보드에 이미지가 있으면 활성 문서 옆
   // attachments/ 폴더에 저장하고 마크다운을 삽입한다 (텍스트 붙여넣기는 그대로).
