@@ -739,12 +739,23 @@ async function enhance(el) {
   el.querySelectorAll("pre code").forEach((c) => { try { hljs.highlightElement(c); } catch (_) {} });
   const imgs = el.querySelectorAll("img");
   for (const img of imgs) {
-    // Quarto image attribute: `![](src){width=300}` — marked leaves the braces
-    // as literal text right after the <img>; apply the width and remove them.
+    // Quarto image attributes: `![](src){width=300 fig-align="center"}` —
+    // marked leaves the braces as literal text right after the <img>;
+    // apply what we understand and remove them.
     const t = img.nextSibling;
     if (t && t.nodeType === 3) {
-      const m = /^\{\s*width=(\d+%?)\s*\}/.exec(t.textContent);
-      if (m) { img.style.width = /%$/.test(m[1]) ? m[1] : m[1] + "px"; t.textContent = t.textContent.slice(m[0].length); }
+      const m = /^\{([^}\n]*)\}/.exec(t.textContent);
+      if (m && /(?:^|\s)(width=|fig-align=)/.test(m[1])) {
+        const wm = /(?:^|\s)width=(\d+%?)(?:\s|$)/.exec(m[1]);
+        const gm = /fig-align="?(left|center|right)"?/.exec(m[1]);
+        if (wm) img.style.width = /%$/.test(wm[1]) ? wm[1] : wm[1] + "px";
+        if (gm) {
+          img.style.display = "block";
+          img.style.marginLeft = gm[1] === "left" ? "0" : "auto";
+          img.style.marginRight = gm[1] === "right" ? "0" : "auto";
+        }
+        t.textContent = t.textContent.slice(m[0].length);
+      }
     }
     const src = img.getAttribute("src") || "";
     if (!src || /^(https?:|data:)/.test(src)) continue;

@@ -26,37 +26,52 @@ let HOST = {
 };
 
 /* ------------------------------ widgets ------------------------------ */
-// Rewrite (or add) the Quarto {width=N} attribute after the image markdown
-// that starts at this widget's document position.
-function applyImageWidth(view, dom, width) {
+// Merge a patch ({width} and/or {align}) into the Quarto attribute block after
+// the image markdown that starts at this widget's document position, e.g.
+// ![alt](src){width=300 fig-align="center"} — standard syntax, so a real
+// `quarto render` honors it too.
+function applyImageAttr(view, dom, patch) {
   try {
     const pos = view.posAtDOM(dom);
     const line = view.state.doc.lineAt(pos);
     const text = view.state.doc.sliceString(pos, line.to);
-    const m = /^!\[[^\]]*\]\([^)]*\)(\{\s*width=[^}]*\})?/.exec(text);
+    const m = /^!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?/.exec(text);
     if (!m) return;
     const attrTo = pos + m[0].length;
     const attrFrom = attrTo - (m[1] ? m[1].length : 0);
-    view.dispatch({ changes: { from: attrFrom, to: attrTo, insert: `{width=${width}}` } });
+    const cur = m[1] ? m[1].slice(1, -1) : "";
+    let width = (/(?:^|\s)width=(\d+%?)/.exec(cur) || [])[1] || null;
+    let align = (/fig-align="?(left|center|right)"?/.exec(cur) || [])[1] || null;
+    if ("width" in patch) width = patch.width;
+    if ("align" in patch) align = patch.align;
+    const parts = [];
+    if (width) parts.push("width=" + width);
+    if (align) parts.push('fig-align="' + align + '"');
+    view.dispatch({ changes: { from: attrFrom, to: attrTo, insert: parts.length ? "{" + parts.join(" ") + "}" : "" } });
   } catch (_) { /* widget detached mid-drag */ }
 }
 
 class ImageWidget extends WidgetType {
-  constructor(src, alt, width) { super(); this.src = src; this.alt = alt; this.width = width || null; }
-  eq(o) { return o.src === this.src && o.alt === this.alt && o.width === this.width; }
+  constructor(src, alt, width, align) {
+    super(); this.src = src; this.alt = alt; this.width = width || null; this.align = align || null;
+  }
+  eq(o) { return o.src === this.src && o.alt === this.alt && o.width === this.width && o.align === this.align; }
   toDOM(view) {
     // The widget's root must stay stable: replacing it (img.replaceWith) mutates
     // the editable DOM outside a transaction, and CM's observer syncs the
     // placeholder text back into the document. So keep a wrapper and only swap
-    // its children on failure.
+    // an inner box's children on failure.
     const wrap = document.createElement("span");
-    wrap.className = "qv-imgwrap";
+    wrap.className = "qv-imgwrap" + (this.align ? " qv-align-" + this.align : "");
+    const box = document.createElement("span");      // relative anchor for grip/toolbar
+    box.className = "qv-imgbox";
+    wrap.appendChild(box);
     const img = document.createElement("img");
     img.className = "qv-img";
     img.alt = this.alt || "";
     if (this.width) img.style.width = /%$/.test(this.width) ? this.width : this.width + "px";
-    wrap.appendChild(img);
-    const fail = () => { wrap.textContent = ""; wrap.appendChild(missing(this.src, this.alt)); };
+    box.appendChild(img);
+    const fail = () => { box.textContent = ""; box.appendChild(missing(this.src, this.alt)); };
     if (/^(https?:|data:)/.test(this.src)) img.src = this.src;
     else HOST.resolveAsset(this.src).then((uri) => { if (uri) img.src = uri; else fail(); }).catch(fail);
     img.addEventListener("error", fail);
@@ -66,7 +81,7 @@ class ImageWidget extends WidgetType {
     const grip = document.createElement("span");
     grip.className = "qv-img-grip";
     grip.title = "드래그해서 크기 조절";
-    wrap.appendChild(grip);
+    box.appendChild(grip);
     grip.addEventListener("mousedown", (e) => {
       e.preventDefault(); e.stopPropagation();
       const startX = e.clientX, startW = img.getBoundingClientRect().width;
@@ -74,11 +89,26 @@ class ImageWidget extends WidgetType {
       const up = () => {
         document.removeEventListener("mousemove", move);
         document.removeEventListener("mouseup", up);
-        applyImageWidth(view, wrap, Math.round(img.getBoundingClientRect().width));
+        applyImageAttr(view, wrap, { width: Math.round(img.getBoundingClientRect().width) });
       };
       document.addEventListener("mousemove", move);
       document.addEventListener("mouseup", up);
     });
+    // Hover toolbar: left / center / right alignment → fig-align attribute.
+    // Clicking the active one clears the alignment.
+    const bar = document.createElement("span");
+    bar.className = "qv-img-alignbar";
+    for (const [key, glyph, tip] of [["left", "⇤", "왼쪽 정렬"], ["center", "↔", "가운데 정렬"], ["right", "⇥", "오른쪽 정렬"]]) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = glyph; b.title = tip;
+      if (this.align === key) b.className = "on";
+      b.addEventListener("mousedown", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        applyImageAttr(view, wrap, { align: this.align === key ? null : key });
+      });
+      bar.appendChild(b);
+    }
+    box.appendChild(bar);
     return wrap;
   }
   ignoreEvent() { return true; }
@@ -321,12 +351,18 @@ function buildDecorations(state) {
       if (name === "Image") {
         const raw = doc.sliceString(from, to);
         const m = /^!\[([^\]]*)\]\(([^)]+)\)/.exec(raw);
-        // Quarto image attribute right after the node: ![alt](src){width=300}
+        // Quarto image attributes right after the node:
+        // ![alt](src){width=300 fig-align="center"}
         const lineEnd = doc.lineAt(to).to;
-        const am = /^\{\s*width=(\d+%?)\s*\}/.exec(doc.sliceString(to, Math.min(to + 40, lineEnd)));
-        const end = am ? to + am[0].length : to;
+        const am = /^\{([^}\n]*)\}/.exec(doc.sliceString(to, Math.min(to + 80, lineEnd)));
+        let width = null, align = null, end = to;
+        if (am) {
+          width = (/(?:^|\s)width=(\d+%?)(?:\s|$)/.exec(am[1]) || [])[1] || null;
+          align = (/fig-align="?(left|center|right)"?/.exec(am[1]) || [])[1] || null;
+          if (width || align) end = to + am[0].length;   // only swallow attrs we understand
+        }
         if (m && !spanActive(from, end)) {
-          decos.push({ from, to: end, deco: Decoration.replace({ widget: new ImageWidget(m[2].trim(), m[1], am ? am[1] : null) }) });
+          decos.push({ from, to: end, deco: Decoration.replace({ widget: new ImageWidget(m[2].trim(), m[1], width, align) }) });
           return false;
         }
         // Active line: the source is revealed for editing — but a data: URI is
@@ -508,13 +544,32 @@ const theme = EditorView.theme({
   ".cm-strong": { fontWeight: "700", color: "#333" },
   ".cm-em": { fontStyle: "italic" },
   ".cm-strike": { textDecoration: "line-through", color: "#999" },
-  ".qv-imgwrap": { position: "relative", display: "inline-block" },
+  ".qv-imgwrap": { display: "inline-block", maxWidth: "100%" },
+  // fig-align variants: the wrap becomes a full-width block and the inner box
+  // (image + controls) is positioned inside it with text-align.
+  ".qv-imgwrap.qv-align-left": { display: "block", textAlign: "left" },
+  ".qv-imgwrap.qv-align-center": { display: "block", textAlign: "center" },
+  ".qv-imgwrap.qv-align-right": { display: "block", textAlign: "right" },
+  ".qv-imgbox": { position: "relative", display: "inline-block", maxWidth: "100%" },
   ".qv-img-grip": {
     position: "absolute", right: "-7px", bottom: "-7px", width: "14px", height: "14px",
     borderRadius: "4px", background: "#fff", border: "1.5px solid #ff6f61",
     cursor: "nwse-resize", opacity: "0", transition: "opacity .15s",
   },
-  ".qv-imgwrap:hover .qv-img-grip": { opacity: "1" },
+  ".qv-imgbox:hover .qv-img-grip": { opacity: "1" },
+  ".qv-img-alignbar": {
+    position: "absolute", top: "-26px", left: "50%", transform: "translateX(-50%)",
+    display: "flex", gap: "2px", padding: "2px", borderRadius: "7px",
+    background: "#fff", border: "1px solid #ddd9c3", boxShadow: "0 2px 8px rgba(0,0,0,.08)",
+    opacity: "0", transition: "opacity .15s", pointerEvents: "none", whiteSpace: "nowrap",
+  },
+  ".qv-imgbox:hover .qv-img-alignbar": { opacity: "1", pointerEvents: "auto" },
+  ".qv-img-alignbar button": {
+    border: "none", background: "transparent", borderRadius: "5px", cursor: "pointer",
+    font: "13px/1 -apple-system, system-ui, sans-serif", padding: "3px 7px", color: "#6b675c",
+  },
+  ".qv-img-alignbar button:hover": { background: "#f0eee2" },
+  ".qv-img-alignbar button.on": { background: "#ff6f61", color: "#fff" },
   ".cm-datauri": {
     display: "inline-block", padding: "0 7px", margin: "0 1px",
     background: "#f0eee2", border: "1px solid #ddd9c3", borderRadius: "6px",
