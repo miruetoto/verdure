@@ -51,6 +51,7 @@
     display: flex; align-items: center; gap: 3px;
     width: 223px; flex: none;   /* header has 10px left padding: 10+223 = 233 */
   }
+  html.qv-web #tb-left { width: auto; }  /* no sidebar split to align tabs to */
   #status { color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; margin-left: 6px; }
   #reload-btn {
     display: none; align-items: center; gap: 5px; flex: none; margin-left: 4px;
@@ -106,6 +107,7 @@
     -webkit-user-select: none; user-select: none;
   }
   #sidebar[hidden] { display: none; }
+  html.qv-web #sidebar { display: none; }  /* web build: no folder access → no explorer */
   /* No border-bottom here: it sat at a height nothing on the editor side
      matched, so the top-left junction showed three misaligned lines. */
   #sidebar-head {
@@ -409,7 +411,7 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
   };
   window.pywebview = { api: {
     get_state: async () => ({ text: "", title: "", path: "", folder: null }),
-    help_doc: async () => ({ text: "# 푸르름 (웹)\n\n**열기** 버튼으로 `.qmd`/`.md` 파일을 엽니다. 편집·수식·콜아웃·저장(⌘S)·이미지 붙여넣기·그림판 모두 동작합니다.\n\n::: {.callout-tip}\n**팁**: 파일을 폴더째 열면(사이드바) 이미지가 데스크톱과 똑같이 `attachments/` 폴더에 저장됩니다. 파일만 단독으로 열면 이미지는 문서 안에 직접 포함됩니다.\n:::", title: "도움말", path: "" }),
+    help_doc: async () => ({ text: "# 푸르름 (웹)\n\n**열기** 버튼으로 `.qmd`/`.md` 파일을 엽니다. 편집·수식·콜아웃·저장(⌘S)·이미지 붙여넣기·그림판 모두 동작합니다.\n\n::: {.callout-note}\n웹 버전에서 붙여넣거나 그린 이미지는 **문서 안에 직접 포함**됩니다 (별도 파일 없음 — 문서 하나로 자체 완결).\n:::", title: "도움말", path: "" }),
     read_path: async (path) => {
       const h = fileHandles.get(path);
       if (h) return stateOf(path, h);
@@ -531,6 +533,9 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
       return { opened: true };
     },
   } };
+  // Web mode has no folder access from a single-file open, so the explorer
+  // sidebar would only ever show its empty state — hide it entirely.
+  document.documentElement.classList.add("qv-web");
   window.dispatchEvent(new Event("pywebviewready"));
 }, 400));
 </script>
