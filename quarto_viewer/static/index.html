@@ -140,7 +140,6 @@
     font: 700 11.5px/1.3 -apple-system, system-ui, sans-serif; color: var(--fg);
   }
   .tree-root-head .tn { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tree-root-head .tw { width: 12px; flex: none; color: var(--muted); font-size: 10px; }
   .tree-root-close {
     flex: none; width: 17px; height: 17px; border: none; border-radius: 5px; padding: 0;
     background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; opacity: 0;
@@ -158,13 +157,25 @@
   }
   .sidebar-empty button:hover { background: var(--hover); }
   .tree-row {
-    display: flex; align-items: center; gap: 4px; height: 26px; cursor: default;
+    display: flex; align-items: center; gap: 4px; height: 27px; cursor: default;
     font: 500 12.5px/1 -apple-system, system-ui, sans-serif; color: var(--fg);
-    white-space: nowrap; overflow: hidden; padding-right: 8px;
+    white-space: nowrap; overflow: hidden; padding-right: 8px; border-radius: 5px;
+    margin: 0 4px;
   }
   .tree-row:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
   .tree-row.active { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
-  .tree-row .tw { width: 12px; flex: none; text-align: center; color: var(--muted); font-size: 9px; }
+  /* Disclosure chevron: pure CSS (border triangle) — bigger than the old text
+     "▸" and renders identically in every engine. Rotates when open. */
+  .tw {
+    width: 18px; height: 18px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .tw.has::before {
+    content: ""; display: block; width: 6.5px; height: 6.5px;
+    border-right: 1.8px solid var(--muted); border-bottom: 1.8px solid var(--muted);
+    transform: rotate(-45deg); transition: transform .13s ease;
+  }
+  .tw.has.open::before { transform: rotate(45deg) translateY(-2px); }
   .tree-row .ti { flex: none; opacity: .8; }
   .tree-row .tn { overflow: hidden; text-overflow: ellipsis; }
   .tree-row.dir { color: var(--fg); }
@@ -1059,7 +1070,7 @@ function makeTreeNode(entry, depth) {
   row.className = "tree-row " + (entry.is_dir ? "dir" : "file");
   row.dataset.path = entry.path;
   row.style.paddingLeft = 6 + depth * 13 + "px";
-  const tw = document.createElement("span"); tw.className = "tw"; tw.textContent = entry.is_dir ? "▸" : "";
+  const tw = document.createElement("span"); tw.className = entry.is_dir ? "tw has" : "tw";
   const name = document.createElement("span"); name.className = "tn"; name.textContent = entry.name;
   row.appendChild(tw);
   row.insertAdjacentHTML("beforeend", treeIcon(entry.is_dir));
@@ -1069,7 +1080,7 @@ function makeTreeNode(entry, depth) {
     const kids = document.createElement("div"); kids.hidden = true; wrap.appendChild(kids);
     let loaded = false;
     row.onclick = async () => {
-      if (!kids.hidden) { kids.hidden = true; tw.textContent = "▸"; return; }
+      if (!kids.hidden) { kids.hidden = true; tw.classList.remove("open"); return; }
       if (!loaded) {
         try {
           const sub = await api().list_dir(entry.path);
@@ -1077,7 +1088,7 @@ function makeTreeNode(entry, depth) {
           loaded = true;
         } catch (_) {}
       }
-      kids.hidden = false; tw.textContent = "▾";
+      kids.hidden = false; tw.classList.add("open");
     };
   } else {
     row.onclick = () => { (async () => { try { addTab(await api().read_path(entry.path)); markActiveInTree(); } catch (_) {} })(); };
@@ -1109,7 +1120,7 @@ async function renderRoots() {
     r.name = info.name || r.path;
     const sec = document.createElement("div"); sec.className = "tree-root-sec";
     const head = document.createElement("div"); head.className = "tree-root-head";
-    const tw = document.createElement("span"); tw.className = "tw"; tw.textContent = r.collapsed ? "▸" : "▾";
+    const tw = document.createElement("span"); tw.className = "tw has" + (r.collapsed ? "" : " open");
     const nm = document.createElement("span"); nm.className = "tn"; nm.textContent = r.name; nm.title = r.path;
     const x = document.createElement("button"); x.className = "tree-root-close"; x.textContent = "×"; x.title = "폴더 닫기";
     x.onclick = (e) => { e.stopPropagation(); closeRoot(r.path); };
@@ -1118,7 +1129,7 @@ async function renderRoots() {
     const kids = document.createElement("div"); kids.hidden = r.collapsed;
     for (const e of info.entries || []) kids.appendChild(makeTreeNode(e, 0));
     sec.appendChild(kids);
-    head.onclick = () => { r.collapsed = !r.collapsed; kids.hidden = r.collapsed; tw.textContent = r.collapsed ? "▸" : "▾"; };
+    head.onclick = () => { r.collapsed = !r.collapsed; kids.hidden = r.collapsed; tw.classList.toggle("open", !r.collapsed); };
     tree.appendChild(sec);
   }
   markActiveInTree();
