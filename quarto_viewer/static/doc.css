@@ -15,7 +15,8 @@
 }
 
 :root {
-  --serif: 'NanumMyeongjo', 'Nanum Myeongjo', serif;
+  /* Latin → system sans (user pref); Hangul (missing there) → NanumMyeongjo. */
+  --serif: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, 'NanumMyeongjo', 'Nanum Myeongjo', serif;
   --mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --bg: #fcfcf7;            /* body background */
   --body: #555555;          /* base text */

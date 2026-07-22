@@ -209,7 +209,8 @@ function enhanceTableWidget(el, view, widget) {
     const m = parseTable(widget.src) || { header: [], aligns: [], rows: [] };
     trs().forEach((tr, ri) => {
       [...tr.children].forEach((cell, ci) => {
-        const v = cell.textContent;
+        const inp = cell.querySelector("input.qv-cell-input");
+        const v = inp ? inp.value : cell.textContent;
         if (ri === 0) m.header[ci] = v;
         else (m.rows[ri - 1] || (m.rows[ri - 1] = []))[ci] = v;
       });
@@ -247,7 +248,9 @@ function enhanceTableWidget(el, view, widget) {
         }
         const tr = best && [...best.querySelectorAll("tr")][r];
         const cell = tr && tr.children[Math.min(c, tr.children.length - 1)];
-        if (cell) { cell.focus(); placeCaretEnd(cell); }
+        // Synthetic mousedown routes through the NEW widget's cell handler,
+        // which opens its inline <input> editor.
+        if (cell) cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
       } catch (_) {}
     }));
   };
@@ -274,19 +277,51 @@ function enhanceTableWidget(el, view, widget) {
     if (ri >= m.rows.length + 0 && ri === trs().length - 1) m.rows.push(Array(m.header.length).fill(""));
     commit(m, ri + 1, ci);
   };
+  // Cell editing uses a swapped-in <input>, NOT contenteditable. A real mouse
+  // click in a contenteditable cell puts the BROWSER selection inside the
+  // widget; CodeMirror's selection observer maps that to the widget's document
+  // position and reveals the table's raw source — the table "runs away" the
+  // moment you click it. An <input>'s selection is internal to the control and
+  // invisible to the document selection, so CM stays untouched.
+  const startEdit = (cell, ri, ci) => {
+    if (dead || cell.querySelector("input.qv-cell-input")) return;
+    last = { r: ri, c: ci };
+    const val = cellText(cell);
+    cell.classList.add("qv-editing");
+    cell.textContent = "";
+    const inp = document.createElement("input");
+    inp.className = "qv-cell-input";
+    inp.value = val;
+    cell.appendChild(inp);
+    inp.focus();
+    try { inp.setSelectionRange(val.length, val.length); } catch (_) {}
+    const close = () => {
+      if (!inp.isConnected) return;
+      const v = inp.value;
+      inp.remove(); cell.classList.remove("qv-editing"); cell.textContent = v;
+    };
+    inp.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Tab") { e.preventDefault(); close(); nav(ri, ci, e.shiftKey ? -1 : 1); }
+      else if (e.key === "Enter") { e.preventDefault(); close(); navDown(ri, ci); }
+      else if (e.key === "Escape") { e.preventDefault(); close(); commitIfChanged(); }
+    });
+    inp.addEventListener("mousedown", (e) => e.stopPropagation());
+    inp.addEventListener("blur", () => {
+      // Deferred: Tab/Enter close the input themselves before this runs.
+      setTimeout(() => { if (inp.isConnected) { close(); commitIfChanged(); } }, 0);
+    });
+  };
+  const cellText = (cell) => {
+    const i = cell.querySelector("input.qv-cell-input");
+    return i ? i.value : cell.textContent;
+  };
   trs().forEach((tr, ri) => [...tr.children].forEach((cell, ci) => {
-    cell.contentEditable = "true";
-    cell.addEventListener("mousedown", (e) => { e.stopPropagation(); last = { r: ri, c: ci }; });
-    cell.addEventListener("focus", () => { last = { r: ri, c: ci }; });
-    cell.addEventListener("keydown", (e) => {
-      if (e.key === "Tab") { e.preventDefault(); e.stopPropagation(); nav(ri, ci, e.shiftKey ? -1 : 1); }
-      else if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); navDown(ri, ci); }
-      else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cell.blur(); commitIfChanged(); }
+    cell.addEventListener("mousedown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      startEdit(cell, ri, ci);
     });
   }));
-  table.addEventListener("focusout", (e) => {
-    if (!table.contains(e.relatedTarget)) commitIfChanged();
-  });
   // Hover toolbar.
   const bar = document.createElement("div");
   bar.className = "qv-tablebar";
@@ -698,7 +733,7 @@ const MONO = "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Couri
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "#fcfcf7", color: "#555" },
   ".cm-scroller": {
-    fontFamily: "'NanumMyeongjo','Nanum Myeongjo',serif",
+    fontFamily: "-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,'NanumMyeongjo','Nanum Myeongjo',serif",
     fontSize: "16px", lineHeight: "1.5", overflow: "auto",
   },
   ".cm-content": { padding: "44px 8px 200px", maxWidth: "820px", margin: "0 auto", caretColor: "#ff6f61" },
@@ -777,8 +812,13 @@ const theme = EditorView.theme({
   ".qv-math-block": { textAlign: "center", margin: "2px 0" },
   ".qv-block": { margin: "0", position: "relative" },
   // In-place table editing chrome.
-  ".qv-hastable td:focus, .qv-hastable th:focus": {
+  ".qv-hastable td.qv-editing, .qv-hastable th.qv-editing": {
     outline: "2px solid #ff6f61", outlineOffset: "-2px", borderRadius: "3px",
+  },
+  ".qv-cell-input": {
+    font: "inherit", color: "inherit", background: "transparent",
+    border: "none", outline: "none", padding: "0", margin: "0",
+    width: "100%", minWidth: "3ch",
   },
   ".qv-tablebar": {
     position: "absolute", top: "-32px", left: "0",
