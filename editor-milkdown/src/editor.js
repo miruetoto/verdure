@@ -32,6 +32,7 @@ import { sinkListItem } from "@milkdown/kit/prose/schema-list";
 import { mathPlugins, setMathRenderer } from "./math.js";
 import { quartoPlugins, QHOST, addDeleteBadge } from "./quarto.js";
 import { imagePlugins, IHOST } from "./image.js";
+import { tablePlugin, THOST } from "./table.js";
 export { parseTable, serializeTable, parseCallout, serializeCallout, parseTabset, serializeTabset } from "./helpers.js";
 
 /* Host callbacks (same shape the CM bundle used). */
@@ -68,6 +69,7 @@ function create(parent, opts = {}) {
   else if (opts.resolveImages) QHOST.enhance = opts.resolveImages; // app passes its enhance() as resolveImages
   if (opts.resolveAsset) IHOST.resolveAsset = opts.resolveAsset;
   if (opts.editImage) IHOST.editImage = opts.editImage;
+  if (opts.editTable) THOST.editTable = opts.editTable;
 
   let editor = null;
   let wantFocus = false;   // focus() arrived before the async boot finished
@@ -184,6 +186,7 @@ function create(parent, opts = {}) {
       .use(clipboard)
       .use(cursor)
       .use(trailing)   // always keep a trailing paragraph to type into
+      .use(tablePlugin(() => (editor ? editor.ctx : null)))  // dblclick → table popup
       .use(appKeys)
       .create();
     // The app may setValue/setState/focus before the async boot finishes

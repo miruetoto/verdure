@@ -205,6 +205,13 @@ class MathWidget extends WidgetType {
     // (see typesetSync). The stale-caret-after-doc-change problem is handled
     // globally by the caret-redraw update listener below, not here.
     const sync = HOST.typesetSync && HOST.typesetSync(el, this.tex, this.display);
+    if (sync) {
+      // Even a synchronous render can settle at a different width than CM's
+      // measurement pass sampled (fonts, CHTML stylesheet application). One
+      // remeasure on the next frame keeps posAtCoords honest — clicks right
+      // of the formula used to land at the END of the line.
+      requestAnimationFrame(() => { try { view.requestMeasure(); } catch (_) {} });
+    }
     if (!sync) {
       el.textContent = this.display ? `\\[${this.tex}\\]` : `\\(${this.tex}\\)`;
       const remeasure = () => { try { view.requestMeasure(); } catch (_) {} };
@@ -1021,6 +1028,11 @@ function create(parent, opts = {}) {
     renderFrontmatter: opts.renderFrontmatter || opts.renderBlock || HOST.renderBlock,
     resolveAsset: opts.resolveAsset || HOST.resolveAsset,
     typeset: opts.typeset || HOST.typeset,
+    // THE missing line behind the long-lived "big gap after inline math" bug:
+    // without it MathWidget's synchronous render path never ran — every formula
+    // took the async fallback, CM measured the wide \(..\) placeholder, and the
+    // caret stayed at that stale width after the late render narrowed the widget.
+    typesetSync: opts.typesetSync || HOST.typesetSync,
     editTable: opts.editTable || HOST.editTable,
     editTabset: opts.editTabset || HOST.editTabset,
     editCallout: opts.editCallout || HOST.editCallout,
@@ -1146,6 +1158,9 @@ function create(parent, opts = {}) {
   });
 
   const view = new EditorView({ state: makeState(opts.doc), parent });
+  // Web fonts (base64 serif) apply after first layout and shift every glyph
+  // metric; remeasure once they're in so click→position mapping stays exact.
+  try { document.fonts.ready.then(() => view.requestMeasure()); } catch (_) {}
 
   // Selection/caret reflow after OUT-OF-BAND height changes. drawSelection
   // positions its rectangles from CM's cached line-height map, which only

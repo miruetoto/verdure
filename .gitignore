@@ -25,3 +25,7 @@ err/
 
 .DS_Store
 editor-milkdown/dist/
+# Electron packaged output (rebuild: cd electron-shell && npx electron-builder --mac dmg)
+electron-shell/release/
+# Vditor vendored dist (regenerate: cp -R editor-vditor/node_modules/vditor/dist quarto_viewer/static/vendor/vditor/dist)
+quarto_viewer/static/vendor/vditor/

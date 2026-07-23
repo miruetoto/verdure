@@ -191,7 +191,11 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
     },
   });
-  win.loadFile(path.join(__dirname, "..", "quarto_viewer", "static", "index.html"));
+  // dev: repo layout / packaged: extraResources → Contents/Resources/static
+  const staticDir = app.isPackaged
+    ? path.join(process.resourcesPath, "static")
+    : path.join(__dirname, "..", "quarto_viewer", "static");
+  win.loadFile(path.join(staticDir, "index.html"));
 }
 
 app.whenReady().then(() => {

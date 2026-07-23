@@ -125,3 +125,50 @@
 - [ ] **zoom 기능** (⌘+/⌘− 문서 확대/축소) — 사용자 요청, 미구현.
 - [ ] Intel(Universal) 빌드는 미제공(현재 aarch64만).
 - [ ] 새 dmg 낼 때마다 `Casks/pururum.rb`의 version·sha256 갱신 + 릴리즈 재업로드.
+
+---
+
+## 10. 엔진 대전환 (2026-07-23 밤) — WKWebView 탈출
+
+**결론: Vditor(IR) + Electron(Chromium).** 커밋 전 상태 (사용자 지시로 커밋 보류).
+
+- **원인 규명**: CM에서 못 잡던 커서 튐·선택 드리프트·수식 빈칸·클릭 무반응은
+  전부 **Tauri의 WKWebView 전용** — 헤드리스(Chromium/WebKit)에선 재현 불가.
+  Obsidian/Typora가 안정적인 이유 = Chromium(Electron).
+- **Milkdown(ProseMirror) 시도** → 커서 문제는 해결됐으나 **입력을 노드로 변환**
+  ("지맘대로 바꾼다")이 사용자 철학과 충돌. 코드는 editor-milkdown/에 보존.
+- **Vditor 3.11.2 채택**: Typora식 IR — 친 그대로 = 소스, 커서 벗어나면 마커만
+  숨김. `vendor/vditor-adapter.js`가 QVEditor 파사드 제공(팝업·저장·export 재사용).
+  프론트매터는 에디터 밖 타이틀바(부팅 캐럿/슬랩 계열 버그 원천 차단).
+- **Electron 셸** (`electron-shell/`): Rust 브리지를 명령별로 미러링(main.js) +
+  pywebview 형태 preload → index.html 무수정 동작.
+- 테마: 신록예찬 이식(흰 카드/회색 슬랩 제거, 산호 제목, 코드패널은 code-block에만
+  스코프 — math 소스 pre와 클래스를 공유해서 생긴 베이지 조각 버그 수정).
+- 수식: KaTeX (vditor 번들 MathJax는 로더 충돌 — export는 기존 MathJax 파이프라인
+  그대로라 최종 산출물은 블로그 정합).
+- 남은 일: 사용자 실기 승인 → 아이콘·dmg(electron-builder) → Tauri 대체 결정,
+  콜아웃/탭셋 fence 라인 시각 태깅(멀티라인 블록 케이스), MathJax 에디터 내 렌더.
+
+### 재개 지점 (2026-07-23 23:20, 미커밋)
+
+**현재 실행 조합 = 원래 CM 위즈윅 + Electron.** 사용자 요구 "수식 입력은 예전
+방식 + 커서 위치만 조정" 충족: 수식 뒤 커서 버그를 Chromium에서 재현→수정
+(editor-src: 동기 렌더 후 requestMeasure + fonts.ready 재측정) 후 실창 검증 그린
+(수식 렌더 ✓ / 수식 뒤 X 정확 ✓ / ⌘A+줌 드리프트 −2 ✓ / 자동저장 ✓).
+
+- dmg: `electron-shell/release/Pururum-2.0.0-arm64.dmg` (122MB, static 번들 확인)
+- 대기: ①사용자 실기 승인 ②커밋/푸시 지시 (자동 커밋 금지 지시 있음)
+- 승인 후 할 일: 릴리즈 v2.0.0 업로드 + cask 갱신, Tauri 셸 은퇴 결정,
+  index-vditor.html·editor-milkdown/ 정리 여부 결정
+- 워킹트리 주요 변경: index.html(CM 복원+MathJax 선로드), editor-src(커서 수정),
+  vendor/cm6 재빌드, electron-shell/(신규), vendor/vditor*(보존), docs/DEVLOG.md
+
+### 역대 버그의 진범 (23:30 규명)
+
+"수식 뒤 큰 공백/캐럿 튐"의 진짜 원인 = **editor-src create()의 HOST 매핑에
+`typesetSync` 누락 (한 줄)**. 동기 렌더 경로가 역사상 한 번도 실행되지 않았고,
+모든 수식이 폴백 `\(..\)`(≈47px)로 측정된 뒤 비동기 렌더로 좁아지며(≈15px)
+캐럿만 옛 폭에 남았다. WKWebView 탓으로 오인했던 이유: 헤드리스에선 테스트가
+MathJax를 미리 로드해 폴백 경로가 달랐음. Chromium(Electron)에서 재현이 가능해져
+위젯 내용 덤프(`mjxInWidget:false`)로 확정. 수정 후: 스페이스 즉시 렌더,
+캐럿 갭 36px→4px. 교훈: **옵션 전달 체인은 grep으로 끝까지 확인할 것.**

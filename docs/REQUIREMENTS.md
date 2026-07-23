@@ -424,3 +424,14 @@
 
 **재사용 가능**: Tauri 백엔드(파일 I/O·저장 대화상자·자동저장·export_html),
 fonts.css(base64), doc.css(테마 값), export 파이프라인, 사이드바/탭 UI 골격.
+
+---
+
+## 최종 결정 (2026-07-23 세션 종결)
+
+- **엔진 = 원래 CodeMirror 위즈윅 + Electron(Chromium) 셸.**
+  Milkdown(입력 변환이 철학과 충돌)·Vditor(편집 디자인 비호감) 탈락, 코드 보존.
+- §3.6/§5.4/§6의 "미해결" 커서·수식 항목의 진범은 엔진이 아니라
+  **create() HOST 매핑의 `typesetSync` 누락 1줄**이었음 (DEVLOG 참고).
+  수정 후 실측: 수식 즉시 렌더, 캐럿 갭 36px→4px, 줌 선택 드리프트 −2px.
+- 이 문서의 §8(레이아웃)·§9(배포 갱신: Electron dmg)은 다음 단계 과제로 유효.
