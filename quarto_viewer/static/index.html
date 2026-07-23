@@ -1578,7 +1578,11 @@ window.QV = {
 // Attachment paths are usually short ("attachments/….png"), but the web build
 // may return a data: URI (image embedded in the document) — describe, don't dump.
 function describePath(p) {
-  return p && p.startsWith("data:") ? "문서에 직접 포함됨" : p;
+  if (!p) return p;
+  if (p.startsWith("data:")) return "문서에 직접 포함됨";
+  // macOS stores filenames decomposed (NFD); recompose so Hangul reads normally.
+  try { p = p.normalize("NFC"); } catch (_) {}
+  return p;
 }
 /* ============ Spreadsheet table editor (modal) ============ */
 // Edit in a plain-HTML grid completely outside CodeMirror (no focus wars),
