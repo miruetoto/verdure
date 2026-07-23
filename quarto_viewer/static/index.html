@@ -201,7 +201,10 @@
   }
   #side-tabs { flex: none; max-height: 40%; overflow: auto; padding-bottom: 6px; }
   .side-tab {
-    display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 14px;
+    /* Left pad 24px: one clear indent step under the 12px section header
+       (flush looked like a sibling of the header), matching the explorer
+       tree's depth-1 rows (~23px). */
+    display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 24px;
     font: 13px/1.4 -apple-system, sans-serif; color: var(--body);
     cursor: pointer; white-space: nowrap; overflow: hidden;
   }
