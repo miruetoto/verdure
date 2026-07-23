@@ -254,8 +254,6 @@
   }
   .co-title:focus { border-color: var(--accent); }
   /* code editor popup */
-  .code-panel { width: min(92vw, 680px); }
-  .code-body { font-family: var(--mono); font-size: 13px; white-space: pre; overflow: auto; tab-size: 2; min-height: 220px; }
   /* image editor popup */
   .img-panel { width: min(92vw, 460px); }
   .img-preview {
@@ -514,23 +512,20 @@
     </div>
   </div>
 
-  <!-- Code-block editor popup: language + code. -->
-  <div id="code-modal" class="overlay" hidden>
-    <div class="tbl-panel code-panel">
-      <div class="img-row">
-        <span class="img-label">언어</span>
-        <input type="text" id="code-lang" class="co-title" placeholder="예: python, r, js (비우면 일반)" list="code-langs" autocomplete="off">
-        <datalist id="code-langs">
-          <option>python</option><option>r</option><option>javascript</option><option>bash</option>
-          <option>sql</option><option>json</option><option>html</option><option>css</option><option>rust</option>
-        </datalist>
-      </div>
-      <textarea id="code-body" class="tabset-body code-body" placeholder="코드" spellcheck="false"></textarea>
+  <!-- Front matter (YAML title block) editor: Quarto's common fields + raw extras. -->
+  <div id="fm-modal" class="overlay" hidden>
+    <div class="tbl-panel fm-panel">
+      <div class="img-row"><span class="img-label">제목</span><input type="text" id="fm-title" class="co-title" style="flex:1" placeholder="문서 제목" autocomplete="off"></div>
+      <div class="img-row"><span class="img-label">부제</span><input type="text" id="fm-subtitle" class="co-title" style="flex:1" placeholder="(선택)" autocomplete="off"></div>
+      <div class="img-row"><span class="img-label">저자</span><input type="text" id="fm-author" class="co-title" style="flex:1" placeholder="(선택)" autocomplete="off"></div>
+      <div class="img-row"><span class="img-label">날짜</span><input type="text" id="fm-date" class="co-title" style="flex:1" placeholder="예: 2026-07-23 (선택)" autocomplete="off"></div>
+      <div class="img-label" style="margin-top:2px">기타 YAML</div>
+      <textarea id="fm-extras" class="tabset-body" placeholder="그 밖의 필드 (선택) — 예: format, categories …" style="min-height:70px"></textarea>
       <div class="tbl-foot">
-        <button id="code-delete" class="dtool danger">코드 삭제</button>
+        <button id="fm-delete" class="dtool danger">머리말 삭제</button>
         <span class="spacer"></span>
-        <button id="code-cancel" class="dtool">취소</button>
-        <button id="code-apply" class="dtool primary">적용</button>
+        <button id="fm-cancel" class="dtool">취소</button>
+        <button id="fm-apply" class="dtool primary">적용</button>
       </div>
     </div>
   </div>
@@ -1391,8 +1386,7 @@ function insertBlock(key) {
   if (key === "callout") { if (ed) newCalloutViaEditor(); return; }
   if (key === "table") { if (ed) newTableViaEditor(); return; }
   if (key === "tabset") { if (ed) newTabsetViaEditor(); return; }
-  if (key === "code") { if (ed) newCodeViaEditor(); return; }
-  const snip = SNIPPETS[key]; if (!snip || !ed) return;
+  const snip = SNIPPETS[key]; if (!snip || !ed) return;   // code → plain inline snippet
   const view = ed.view;
   const sel = view.state.selection.main;
   // Block markup needs to start on its own line (blank line above if mid-text).
@@ -1819,48 +1813,57 @@ function newCalloutViaEditor() {
   openCalloutEditor({ type: "note", title: "", body: "" }, (text) => insertBlockText(text), null);
 }
 
-/* ============ Code-block editor (popup) — language / code / delete ============ */
-const codeModal = document.getElementById("code-modal");
-let codeState = null;   // { onApply, onDelete }
-function openCodeEditor(model, onApply, onDelete) {
-  codeState = { onApply, onDelete };
-  document.getElementById("code-lang").value = model.lang || "";
-  document.getElementById("code-body").value = model.code || "";
-  document.getElementById("code-delete").hidden = !onDelete;
-  codeModal.removeAttribute("hidden");
-  requestAnimationFrame(() => document.getElementById("code-body").focus());
-}
-function closeCodeEditor() { codeModal.setAttribute("hidden", ""); codeState = null; if (ed) ed.focus(); }
-document.getElementById("code-cancel").onclick = closeCodeEditor;
-document.getElementById("code-delete").onclick = () => { if (!codeState) return; const d = codeState.onDelete; closeCodeEditor(); if (d) d(); };
-document.getElementById("code-apply").onclick = () => {
-  if (!codeState) return;
-  const m = { lang: document.getElementById("code-lang").value.trim(), code: document.getElementById("code-body").value };
-  const text = QVEditor.serializeCode(m);
-  const done = codeState.onApply; closeCodeEditor(); done(text);
-};
-// Tab inserts two spaces in the code textarea instead of moving focus.
-document.getElementById("code-body").addEventListener("keydown", (e) => {
-  if (e.key === "Tab") {
-    e.preventDefault();
-    const t = e.target, s = t.selectionStart, en = t.selectionEnd;
-    t.value = t.value.slice(0, s) + "  " + t.value.slice(en);
-    t.selectionStart = t.selectionEnd = s + 2;
+/* ============ Front matter editor (popup) — Quarto YAML fields ============ */
+// Parse the "---\n…\n---" block into known scalar fields + raw extras. A field
+// is only lifted out when it's a simple inline scalar (not a nested block), so
+// complex YAML (author lists, format:, …) is preserved verbatim in extras.
+function parseFmSrc(src) {
+  const inner = src.replace(/^---\r?\n/, "").replace(/\r?\n---\s*$/, "");
+  const lines = inner.split(/\r?\n/);
+  const f = { title: "", subtitle: "", author: "", date: "" }, extras = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(title|subtitle|author|date)\s*:\s*(\S.*)$/.exec(lines[i]);
+    const nextIndented = i + 1 < lines.length && /^\s+\S/.test(lines[i + 1]);
+    if (m && !nextIndented && !f[m[1]]) f[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
+    else extras.push(lines[i]);
   }
-});
-codeModal.addEventListener("mousedown", (e) => { if (e.target === codeModal) closeCodeEditor(); });
+  return { ...f, extras: extras.join("\n").trim() };
+}
+function serializeFm(m) {
+  const q = (v) => /[:#"'{}\[\]]/.test(v) ? '"' + v.replace(/"/g, "'") + '"' : v;
+  const lines = [];
+  for (const k of ["title", "subtitle", "author", "date"]) if (m[k] && m[k].trim()) lines.push(k + ": " + q(m[k].trim()));
+  if (m.extras && m.extras.trim()) lines.push(m.extras.trim());
+  return "---\n" + lines.join("\n") + "\n---";
+}
+const fmModal = document.getElementById("fm-modal");
+let fmState = null;
+function openFrontmatterEditor(model, onApply, onDelete) {
+  fmState = { onApply, onDelete };
+  for (const k of ["title", "subtitle", "author", "date"]) document.getElementById("fm-" + k).value = model[k] || "";
+  document.getElementById("fm-extras").value = model.extras || "";
+  document.getElementById("fm-delete").hidden = !onDelete;
+  fmModal.removeAttribute("hidden");
+  requestAnimationFrame(() => { const t = document.getElementById("fm-title"); t.focus(); t.select(); });
+}
+function closeFrontmatterEditor() { fmModal.setAttribute("hidden", ""); fmState = null; if (ed) ed.focus(); }
+document.getElementById("fm-cancel").onclick = closeFrontmatterEditor;
+document.getElementById("fm-delete").onclick = () => { if (!fmState) return; const d = fmState.onDelete; closeFrontmatterEditor(); if (d) d(); };
+document.getElementById("fm-apply").onclick = () => {
+  if (!fmState) return;
+  const g = (id) => document.getElementById(id).value;
+  const text = serializeFm({ title: g("fm-title"), subtitle: g("fm-subtitle"), author: g("fm-author"), date: g("fm-date"), extras: g("fm-extras") });
+  const done = fmState.onApply; closeFrontmatterEditor(); done(text);
+};
+fmModal.addEventListener("mousedown", (e) => { if (e.target === fmModal) closeFrontmatterEditor(); });
 document.addEventListener("keydown", (e) => {
-  if (!codeModal.hasAttribute("hidden") && e.key === "Escape") { e.preventDefault(); closeCodeEditor(); }
+  if (!fmModal.hasAttribute("hidden") && e.key === "Escape") { e.preventDefault(); closeFrontmatterEditor(); }
 });
-// Editing an existing code block (clicked in the document).
-function editCodeFromWidget(src, replace, remove) {
-  const m = QVEditor.parseCode(src) || { lang: "", code: "" };
-  openCodeEditor(m, (text) => replace(text), remove ? () => remove() : null);
+// Clicking the rendered title block opens this editor.
+function editFrontmatterFromWidget(src, replace, remove) {
+  openFrontmatterEditor(parseFmSrc(src), (text) => replace(text), remove ? () => remove() : null);
 }
-// Creating a new code block (삽입 → 코드 블록).
-function newCodeViaEditor() {
-  openCodeEditor({ lang: "", code: "" }, (text) => insertBlockText(text), null);
-}
+
 // After a modal closes, focus hands back to the editor and WKWebView may drag
 // the (browser) selection to a stale spot — CM then maps it to the widget's
 // right edge. Settle the caret: assert now, after the handoff timers, and once
@@ -2277,7 +2280,7 @@ window.addEventListener("pywebviewready", async () => {
     editTable: editTableFromWidget,
     editTabset: editTabsetFromWidget,
     editCallout: editCalloutFromWidget,
-    editCode: editCodeFromWidget,
+    editFrontmatter: editFrontmatterFromWidget,
     editImage: editImageFromWidget,
     settleCaret,
   });

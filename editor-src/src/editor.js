@@ -26,7 +26,7 @@ let HOST = {
   editTable: null,   // host-provided spreadsheet modal (src, replace) — see index.html
   editTabset: null,  // host-provided tabset popup editor
   editCallout: null, // host-provided callout popup editor (type/title/body)
-  editCode: null,    // host-provided code-block popup editor (lang/code)
+  editFrontmatter: null, // host-provided front-matter fields popup
   editImage: null,   // host-provided image popup editor (align/size/delete)
   settleCaret: null, // host-provided caret settling across modal focus handoffs
 };
@@ -319,27 +319,15 @@ function enhanceCalloutWidget(el, view, widget) {
   addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove());
 }
 
-/* ------------------------- code-block editing ----------------------- */
-const isCodeBlockSrc = (src) => /^(`{3,}|~{3,})/.test(src.trim());
-// ```lang … ``` ⇄ { lang, code } (lang = the raw info string, e.g. "python" or "{python}")
-function parseCode(src) {
-  const lines = src.split("\n");
-  const lang = ((/^(?:`{3,}|~{3,})\s*(.*)$/.exec(lines[0] || "") || [])[1] || "").trim();
-  let end = lines.length - 1;
-  while (end > 0 && !/^(`{3,}|~{3,})\s*$/.test(lines[end])) end--;
-  return { lang, code: lines.slice(1, end).join("\n") };
-}
-function serializeCode(m) {
-  return "```" + (m.lang || "").trim() + "\n" + (m.code || "").replace(/\s+$/, "") + "\n```";
-}
-function enhanceCodeWidget(el, view, widget) {
-  if (!HOST.editCode) return;
-  el.classList.add("qv-hascode");
+/* ---------------------- front-matter editing ------------------------ */
+function enhanceFrontmatterWidget(el, view, widget) {
+  if (!HOST.editFrontmatter) return;
+  el.classList.add("qv-hasfm");
   const ops = widgetDocOps(view, el, widget.src);
   el.addEventListener("mousedown", (e) => {
     if (e.target.closest("a")) return;
     e.preventDefault(); e.stopPropagation();
-    HOST.editCode(widget.src, ops.replace, ops.remove);
+    HOST.editFrontmatter(widget.src, ops.replace, ops.remove);
   });
   addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove());
 }
@@ -434,10 +422,10 @@ class BlockWidget extends WidgetType {
     el.innerHTML = (HOST[this.kind] || HOST.renderBlock)(this.src);
     HOST.resolveImages(el);
     HOST.typeset(el);
-    // Callouts / tabsets / code → popup editor (fixed widget). Return before default click.
+    // Front matter / callouts / tabsets → popup editor (fixed widget).
+    if (this.kind === "renderFrontmatter") { enhanceFrontmatterWidget(el, view, this); return el; }
     if (isCalloutSrc(this.src)) { enhanceCalloutWidget(el, view, this); return el; }
     if (isTabsetSrc(this.src)) { enhanceTabsetWidget(el, view, this); return el; }
-    if (isCodeBlockSrc(this.src)) { enhanceCodeWidget(el, view, this); return el; }
     // Any widget that rendered exactly one table (bare pipe table, or one
     // wrapped in an alignment div) gets in-place cell editing + the toolbar.
     if (el.querySelectorAll("table").length === 1 && /(^|\n)\s*\|/.test(this.src)) {
@@ -559,14 +547,13 @@ function buildDecorations(state) {
   const divRanges = [];   // every ::: fenced div, whether or not it's rendered
   const text = doc.toString();
 
-  // 0) YAML front matter at the very start → rendered title block.
+  // 0) YAML front matter at the very start → rendered title block, edited via a
+  //    fields popup (fixed object). Source mode reveals the raw YAML.
   const fmMatch = text.match(/^---\r?\n[\s\S]*?\r?\n---(?=\r?\n|$)/);
   if (fmMatch) {
     const from = 0, to = fmMatch[0].length;
-    if (!linesActive(from, to)) {
-      decos.push({ from, to, deco: Decoration.replace({ widget: new BlockWidget(fmMatch[0], "renderFrontmatter"), block: true }) });
-      replaced.push({ from, to });
-    }
+    decos.push({ from, to, deco: Decoration.replace({ widget: new BlockWidget(fmMatch[0], "renderFrontmatter"), block: true, fixed: true }) });
+    replaced.push({ from, to });
   }
 
   // 1) Quarto fenced divs (callouts / tabsets): find top-level ::: blocks.
@@ -769,14 +756,13 @@ function buildDecorations(state) {
         return true;
       }
       if (name === "FencedCode") {
-        // Objectified like tables/callouts: a FIXED widget whose click opens the
-        // code popup; the caret can't enter it. Under the raw override (source
-        // mode), reveal the fenced lines for direct editing instead.
-        const ro = state.field(rawOverride, false);
-        const inRaw = ro && from < ro.to && to > ro.from;
-        if (!inRaw) {
+        // Reveal-on-cursor (NOT a fixed object): a highlighted hljs panel when
+        // the caret is outside, and the raw fenced lines — with CodeMirror's own
+        // per-language syntax highlighting — when the caret is inside, so you
+        // edit code directly, in place.
+        if (!linesActive(from, to)) {
           const src = doc.sliceString(from, to);
-          decos.push({ from, to, deco: Decoration.replace({ widget: new BlockWidget(src), block: true, fixed: true }) });
+          decos.push({ from, to, deco: Decoration.replace({ widget: new BlockWidget(src), block: true }) });
           return false;
         }
         const [a, b] = lineNums(doc, from, to);
@@ -1020,7 +1006,7 @@ function create(parent, opts = {}) {
     editTable: opts.editTable || HOST.editTable,
     editTabset: opts.editTabset || HOST.editTabset,
     editCallout: opts.editCallout || HOST.editCallout,
-    editCode: opts.editCode || HOST.editCode,
+    editFrontmatter: opts.editFrontmatter || HOST.editFrontmatter,
     editImage: opts.editImage || HOST.editImage,
     settleCaret: opts.settleCaret || HOST.settleCaret,
     resolveImages: opts.resolveImages || HOST.resolveImages,
@@ -1157,4 +1143,4 @@ function create(parent, opts = {}) {
   };
 }
 
-export { create, parseTable, serializeTable, parseTabset, serializeTabset, parseCallout, serializeCallout, parseCode, serializeCode };
+export { create, parseTable, serializeTable, parseTabset, serializeTabset, parseCallout, serializeCallout };
