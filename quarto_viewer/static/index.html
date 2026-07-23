@@ -1200,6 +1200,23 @@ async function doAutosave() {
     }
   } catch (_) {}
 }
+// Attachments (drawings, pasted images) live next to the document, so an
+// untitled doc needs a real file FIRST. Force an autosave now — even for an
+// empty template — so the "먼저 문서를 저장하세요" toast never blocks an insert.
+async function ensureDocSaved() {
+  const t = activeTab(); if (!t) return false;
+  if (t.path) return true;
+  if (!api().autosave) return false;          // pywebview: no silent path
+  clearTimeout(autosaveTimer);                // pre-empt the pending debounce
+  const text = ed.getValue();
+  const r = await api().autosave(text.trim() ? text : " ", titleHint(text));
+  if (r && r.saved) {
+    t.savedText = text; t.path = r.path; t.title = r.title; t.auto = true;
+    activeTitle = r.title; syncTrack(); renderTabs(); flashAutosaved();
+    return true;
+  }
+  return !!t.path;
+}
 
 /* ============ Insert blocks (Quarto syntax) ============ */
 // A « » token marks where the cursor lands after insertion (stripped before insert).
@@ -1786,6 +1803,7 @@ function croppedDrawingDataUrl() {
 async function insertDrawing() {
   const dataUrl = croppedDrawingDataUrl();
   if (!dataUrl) { flash("그림을 그려주세요"); return; }
+  await ensureDocSaved();
   try {
     const r = await api().save_drawing(dataUrl);
     if (r && r.path) { insertImageMarkdown(r.path); flash("그림 저장됨 — " + describePath(r.path)); closeDrawModal(); }
@@ -1889,7 +1907,12 @@ window.addEventListener("pywebviewready", async () => {
   // attachments/ 폴더에 저장하고 마크다운을 삽입한다 (텍스트 붙여넣기는 그대로).
   ed.view.contentDOM.addEventListener("paste", async () => {
     try {
-      const r = await api().paste_image();
+      let r = await api().paste_image();
+      // Image on the clipboard but the doc has no file yet → give it one and
+      // retry, instead of flashing "먼저 문서를 저장하세요".
+      if (r && r.error && !r.path && await ensureDocSaved()) {
+        r = await api().paste_image();
+      }
       if (r && r.path) {
         ed.view.dispatch(ed.view.state.replaceSelection("![](" + r.path + ")"));
         flash("이미지 저장됨 — " + describePath(r.path));
