@@ -1392,8 +1392,11 @@ function renderSideTabs() {
     el.className = "side-tab" + (t.id === activeId ? " active" : "") + (isDirty(t) ? " dirty" : "");
     el.dataset.id = t.id;
     el.title = t.path || t.title;
-    const dot = document.createElement("span"); dot.className = "st-dot"; el.appendChild(dot);
+    // Name first, dirty dot after it: a leading dot slot indented every row's
+    // text 14px past the section header ("정렬이 안맞지") — trailing, nothing
+    // reserves space on the left and all rows share one text line.
     const name = document.createElement("span"); name.className = "st-name"; name.textContent = t.title; el.appendChild(name);
+    const dot = document.createElement("span"); dot.className = "st-dot"; el.appendChild(dot);
     const close = document.createElement("button");
     close.className = "st-close"; close.textContent = "×"; close.title = "닫기";
     close.onclick = (e) => { e.stopPropagation(); closeTab(t.id); };
@@ -1719,7 +1722,6 @@ function renderWebRecent() {
     const el = document.createElement("div");
     el.className = "side-tab";
     el.title = new Date(d.ts).toLocaleString();
-    el.innerHTML = '<span class="st-dot"></span>';
     const nm = document.createElement("span"); nm.className = "st-name"; nm.textContent = d.title;
     el.appendChild(nm);
     el.onmousedown = () => addTab({ text: d.text, title: d.title, path: "" });
