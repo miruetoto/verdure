@@ -18,19 +18,11 @@ import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirro
 import { tags as t } from "@lezer/highlight";
 
 /* Callbacks are stashed per-view so widgets can reach the host app. */
-// The fixed context slot has one owner at a time; only the owner may clear it,
-// so a table's deferred cleanup can't wipe controls an image just docked.
-let ctxOwner = null;
-function dockCtx(node, label, owner) { ctxOwner = owner; HOST.ctxMount(node, label); }
-function undockCtx(owner) { if (ctxOwner === owner) { ctxOwner = null; HOST.ctxClear(); } }
-
 let HOST = {
   renderBlock: (src) => "<pre>" + src.replace(/[&<]/g, (c) => (c === "&" ? "&amp;" : "&lt;")) + "</pre>",
   resolveAsset: async () => null,
   typeset: async () => {},
   resolveImages: async () => {},
-  ctxMount: () => {},
-  ctxClear: () => {},
   editTable: null,   // host-provided spreadsheet modal (src, replace) — see index.html
   editTabset: null,  // host-provided tabset popup editor
   editCallout: null, // host-provided callout popup editor (type/title/body)
@@ -39,68 +31,59 @@ let HOST = {
 };
 
 /* ------------------------------ widgets ------------------------------ */
-// Merge a patch ({width} and/or {align}) into the Quarto attribute block after
-// the image markdown that starts at this widget's document position, e.g.
-// ![alt](src){width=300 fig-align="center"} — standard syntax, so a real
-// `quarto render` honors it too.
-function applyImageAttr(view, dom, patch) {
-  try {
-    const pos = view.posAtDOM(dom);
-    const line = view.state.doc.lineAt(pos);
-    const text = view.state.doc.sliceString(pos, line.to);
-    const m = /^!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?/.exec(text);
-    if (!m) return;
-    const attrTo = pos + m[0].length;
-    const attrFrom = attrTo - (m[1] ? m[1].length : 0);
-    const cur = m[1] ? m[1].slice(1, -1) : "";
-    let width = (/(?:^|\s)width=(\d+%?)/.exec(cur) || [])[1] || null;
-    let align = (/fig-align="?(left|center|right)"?/.exec(cur) || [])[1] || null;
-    if ("width" in patch) width = patch.width;
-    if ("align" in patch) align = patch.align;
+// Locate an object's exact source in the document. Prefer the widget's live DOM
+// position (disambiguates identical duplicate blocks); fall back to a unique
+// whole-document match, which survives the widget being re-rendered/disconnected
+// during a popup's focus handoff (WKWebView). Shared by every fixed object.
+function findObjRange(view, dom, src) {
+  const doc = view.state.doc;
+  if (dom && dom.isConnected) {
+    const base = view.posAtDOM(dom);
+    for (const from of [base, base - 1, base + 1, base - 2, base + 2, base - 3, base + 3]) {
+      const to = from + src.length;
+      if (from >= 0 && to <= doc.length && doc.sliceString(from, to) === src) return { from, to };
+    }
+  }
+  const text = doc.toString(), idx = text.indexOf(src);
+  if (idx >= 0 && text.indexOf(src, idx + 1) === -1) return { from: idx, to: idx + src.length };
+  return null;
+}
+// Delete an object's range, swallowing one trailing blank line so no gap remains.
+function removeObjRange(view, dom, src) {
+  const rg = findObjRange(view, dom, src); if (!rg) return;
+  let to = rg.to, doc = view.state.doc;
+  if (doc.sliceString(to, to + 1) === "\n" && doc.sliceString(to + 1, to + 2) === "\n") to += 1;
+  else if (doc.sliceString(to, to + 1) === "\n") to += 1;
+  view.dispatch({ changes: { from: rg.from, to, insert: "" }, selection: { anchor: rg.from } });
+  if (HOST.settleCaret) HOST.settleCaret(rg.from);
+}
+
+// Ops for a single image token (![alt](src){width=… fig-align=…}), `raw` = its
+// exact source. apply patches attrs, rewrite swaps the whole token (annotated
+// copy), remove deletes it — all via the shared robust range finder.
+function imageDocOps(view, dom, raw) {
+  const m = /^!\[([^\]]*)\]\(([^)]*)\)(?:\{([^}]*)\})?/.exec(raw) || [];
+  const alt0 = m[1] || "", src0 = m[2] || "", attrs = m[3] || "";
+  const w0 = (/(?:^|\s)width=(\d+%?)/.exec(attrs) || [])[1] || null;
+  const a0 = (/fig-align="?(left|center|right)"?/.exec(attrs) || [])[1] || null;
+  let used = false;
+  const build = ({ src = src0, width, align }) => {
+    let t = "![" + alt0 + "](" + src + ")";
     const parts = [];
     if (width) parts.push("width=" + width);
     if (align) parts.push('fig-align="' + align + '"');
-    view.dispatch({ changes: { from: attrFrom, to: attrTo, insert: parts.length ? "{" + parts.join(" ") + "}" : "" } });
-  } catch (_) { /* widget detached mid-drag */ }
-}
-
-// Doc-range ops for a single image token (![alt](src){attrs}), located from the
-// widget's live DOM position: patch its {width/align} attrs, or delete the whole
-// token. Mirrors the table/tabset "find exact src, rewrite once" pattern.
-function imageDocOps(view, dom) {
-  let used = false;
-  const findTok = () => {
-    const pos = view.posAtDOM(dom);
-    const line = view.state.doc.lineAt(pos);
-    const text = view.state.doc.sliceString(pos, line.to);
-    const m = /^!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?/.exec(text);
-    return m ? { pos, len: m[0].length } : null;
+    return parts.length ? t + "{" + parts.join(" ") + "}" : t;
+  };
+  const write = (tok) => {
+    if (used) return;
+    const rg = findObjRange(view, dom, raw); if (!rg) return; used = true;
+    view.dispatch({ changes: { from: rg.from, to: rg.to, insert: tok } });
+    if (HOST.settleCaret) HOST.settleCaret(rg.from + tok.length);
   };
   return {
-    apply: (patch) => { applyImageAttr(view, dom, patch); },
-    // Replace the whole token — used when an annotated (drawn-on) copy is saved
-    // as a new attachment and swapped in for the original.
-    rewrite: ({ src, alt, width, align }) => {
-      if (used || !dom.isConnected) return;
-      const t = findTok(); if (!t) return; used = true;
-      let s = "![" + (alt || "") + "](" + src + ")";
-      const parts = [];
-      if (width) parts.push("width=" + width);
-      if (align) parts.push('fig-align="' + align + '"');
-      if (parts.length) s += "{" + parts.join(" ") + "}";
-      view.dispatch({ changes: { from: t.pos, to: t.pos + t.len, insert: s } });
-      if (HOST.settleCaret) HOST.settleCaret(t.pos + s.length);
-    },
-    remove: () => {
-      if (used || !dom.isConnected) return;
-      const t = findTok(); if (!t) return; used = true;
-      const doc = view.state.doc;
-      let to = t.pos + t.len;
-      // Swallow a lone trailing newline so a block image leaves no empty gap.
-      if (doc.sliceString(to, to + 1) === "\n") to += 1;
-      view.dispatch({ changes: { from: t.pos, to, insert: "" }, selection: { anchor: t.pos } });
-      if (HOST.settleCaret) HOST.settleCaret(t.pos);
-    },
+    apply: (patch) => write(build({ width: "width" in patch ? patch.width : w0, align: "align" in patch ? patch.align : a0 })),
+    rewrite: ({ src, width, align }) => write(build({ src, width, align })),
+    remove: () => { if (!used) { used = true; removeObjRange(view, dom, raw); } },
   };
 }
 
@@ -116,8 +99,8 @@ function addDeleteBadge(el, onDelete) {
 }
 
 class ImageWidget extends WidgetType {
-  constructor(src, alt, width, align) {
-    super(); this.src = src; this.alt = alt; this.width = width || null; this.align = align || null;
+  constructor(src, alt, width, align, raw) {
+    super(); this.src = src; this.alt = alt; this.width = width || null; this.align = align || null; this.raw = raw || "";
   }
   eq(o) { return o.src === this.src && o.alt === this.alt && o.width === this.width && o.align === this.align; }
   toDOM(view) {
@@ -147,12 +130,13 @@ class ImageWidget extends WidgetType {
       e.preventDefault(); e.stopPropagation();
       placeCursor(view, wrap);
       if (!HOST.editImage) return;
-      const ops = imageDocOps(view, wrap);
+      const ops = imageDocOps(view, wrap, this.raw);
       HOST.editImage(
         { src: this.src, alt: this.alt, width: this.width, align: this.align, preview: img.currentSrc || img.src },
         ops.apply, ops.remove, ops.rewrite);
     });
-    addDeleteBadge(wrap, () => imageDocOps(view, wrap).remove());
+    const raw = this.raw;
+    addDeleteBadge(box, () => removeObjRange(view, wrap, raw));  // box = image-sized, so × sits on its corner
     return wrap;
   }
   ignoreEvent() { return true; }
@@ -259,52 +243,20 @@ function enhanceTableWidget(el, view, widget) {
   const prefix = srcLines.slice(0, firstPipe), suffix = srcLines.slice(lastPipe + 1);
   const pipeText = srcLines.slice(firstPipe, lastPipe + 1).join("\n");
   const centered = /^\s*:{3,}\s*\{[^}]*\.center/.test(widget.src);
-  let used = false;   // a widget instance may rewrite the doc at most once
+  const ops = widgetDocOps(view, el, widget.src);
   const replace = (tableText, center) => {
-    if (used || !el.isConnected) return;
-    const base = view.posAtDOM(el);
-    const doc = view.state.doc;
-    let rg = null;
-    for (const from of [base, base - 1, base + 1, base - 2, base + 2, base - 3, base + 3]) {
-      const to = from + widget.src.length;
-      if (from >= 0 && to <= doc.length && doc.sliceString(from, to) === widget.src) { rg = { from, to }; break; }
-    }
-    if (!rg) return;
-    used = true;
     let text;
     if (center && !centered) text = "::: {.center}\n" + tableText + "\n:::";
     else if (!center && centered) text = tableText;
     else text = [...prefix, tableText, ...suffix].join("\n");
-    view.dispatch({ changes: { from: rg.from, to: rg.to, insert: text } });
-    // Land the caret on the line after the table; the host settles it across
-    // the modal's focus handoff (WKWebView can drag it to the widget's edge).
-    const anchor = Math.min(view.state.doc.length, rg.from + text.length + 1);
-    if (HOST.settleCaret) HOST.settleCaret(anchor);
-    else view.dispatch({ selection: { anchor }, scrollIntoView: true });
-  };
-  const remove = () => {
-    if (used || !el.isConnected) return;
-    const base = view.posAtDOM(el);
-    const doc = view.state.doc;
-    let rg = null;
-    for (const from of [base, base - 1, base + 1, base - 2, base + 2, base - 3, base + 3]) {
-      const to = from + widget.src.length;
-      if (from >= 0 && to <= doc.length && doc.sliceString(from, to) === widget.src) { rg = { from, to }; break; }
-    }
-    if (!rg) return;
-    used = true;
-    // Also swallow one trailing blank line so no double gap is left behind.
-    let to = rg.to;
-    if (doc.sliceString(to, to + 1) === "\n" && doc.sliceString(to + 1, to + 2) === "\n") to += 1;
-    view.dispatch({ changes: { from: rg.from, to, insert: "" }, selection: { anchor: rg.from } });
-    if (HOST.settleCaret) HOST.settleCaret(rg.from);
+    ops.replace(text);
   };
   el.addEventListener("mousedown", (e) => {
     if (e.target.closest("a")) return;
     e.preventDefault(); e.stopPropagation();
-    HOST.editTable(pipeText, centered, replace, remove);
+    HOST.editTable(pipeText, centered, replace, ops.remove);
   });
-  addDeleteBadge(el, () => remove());
+  addDeleteBadge(el, () => removeObjRange(view, el, widget.src));
 }
 
 /* ------------------------- callout editing -------------------------- */
@@ -382,32 +334,19 @@ function serializeTabset(m) {
   parts.push(":::");
   return parts.join("\n").replace(/\n{3,}/g, "\n\n");
 }
-// Doc-range ops shared by fixed widgets (find exact src ±drift, replace/remove).
+// Replace/remove ops shared by block objects (tables, tabsets, callouts), built
+// on the robust range finder so they survive the popup's focus-handoff re-render.
 function widgetDocOps(view, el, src) {
   let used = false;
-  const range = () => {
-    if (used || !el.isConnected) return null;
-    const base = view.posAtDOM(el), doc = view.state.doc;
-    for (const from of [base, base - 1, base + 1, base - 2, base + 2, base - 3, base + 3]) {
-      const to = from + src.length;
-      if (from >= 0 && to <= doc.length && doc.sliceString(from, to) === src) return { from, to };
-    }
-    return null;
-  };
   return {
     replace: (text) => {
-      const rg = range(); if (!rg) return; used = true;
+      if (used) return;
+      const rg = findObjRange(view, el, src); if (!rg) return; used = true;
       view.dispatch({ changes: { from: rg.from, to: rg.to, insert: text } });
       const anchor = Math.min(view.state.doc.length, rg.from + text.length + 1);
       if (HOST.settleCaret) HOST.settleCaret(anchor); else view.dispatch({ selection: { anchor } });
     },
-    remove: () => {
-      const rg = range(); if (!rg) return; used = true;
-      let to = rg.to, doc = view.state.doc;
-      if (doc.sliceString(to, to + 1) === "\n" && doc.sliceString(to + 1, to + 2) === "\n") to += 1;
-      view.dispatch({ changes: { from: rg.from, to, insert: "" }, selection: { anchor: rg.from } });
-      if (HOST.settleCaret) HOST.settleCaret(rg.from);
-    },
+    remove: () => { if (!used) { used = true; removeObjRange(view, el, src); } },
   };
 }
 function enhanceTabsetWidget(el, view, widget) {
@@ -699,10 +638,11 @@ function buildDecorations(state) {
           if (width || align) end = to + am[0].length;   // only swallow attrs we understand
         }
         // FIXED widget (Obsidian-style): images never flip to raw source — the
-        // caret can't enter them (atomic), and editing happens through the
-        // resize grip / alignment toolbar. Delete = backspace over the widget.
+        // caret can't enter them (atomic). Clicking opens the popup editor;
+        // deletion is the × badge or Backspace over the widget.
         if (m) {
-          decos.push({ from, to: end, deco: Decoration.replace({ widget: new ImageWidget(m[2].trim(), m[1], width, align), fixed: true }) });
+          const rawTok = doc.sliceString(from, end);
+          decos.push({ from, to: end, deco: Decoration.replace({ widget: new ImageWidget(m[2].trim(), m[1], width, align, rawTok), fixed: true }) });
           return false;
         }
         return true;
@@ -879,35 +819,14 @@ const theme = EditorView.theme({
   ".cm-strong": { fontWeight: "700", color: "#333" },
   ".cm-em": { fontStyle: "italic" },
   ".cm-strike": { textDecoration: "line-through", color: "#999" },
-  ".qv-imgwrap": { display: "inline-block", maxWidth: "100%" },
+  ".qv-imgwrap": { display: "inline-block", maxWidth: "100%", cursor: "pointer" },
   // fig-align variants: the wrap becomes a full-width block and the inner box
-  // (image + controls) is positioned inside it with text-align.
+  // (the image) is positioned inside it with text-align.
   ".qv-imgwrap.qv-align-left": { display: "block", textAlign: "left" },
   ".qv-imgwrap.qv-align-center": { display: "block", textAlign: "center" },
   ".qv-imgwrap.qv-align-right": { display: "block", textAlign: "right" },
   ".qv-imgbox": { position: "relative", display: "inline-block", maxWidth: "100%" },
-  ".qv-img-grip": {
-    position: "absolute", right: "-7px", bottom: "-7px", width: "14px", height: "14px",
-    borderRadius: "4px", background: "#fff", border: "1.5px solid #ff6f61",
-    cursor: "nwse-resize", opacity: "0", transition: "opacity .15s",
-  },
-  ".qv-imgbox:hover .qv-img-grip": { opacity: "1" },
-  ".qv-imgwrap.qv-selected .qv-img-grip": { opacity: "1" },
-  ".qv-imgwrap.qv-selected .qv-img-alignbar": { opacity: "1", pointerEvents: "auto" },
-  ".qv-imgwrap.qv-selected .qv-img": { outline: "2px solid #ff6f61", outlineOffset: "2px", borderRadius: "2px" },
-  ".qv-img-alignbar": {
-    position: "absolute", top: "-26px", left: "50%", transform: "translateX(-50%)",
-    display: "flex", gap: "2px", padding: "2px", borderRadius: "7px",
-    background: "#fff", border: "1px solid #ddd9c3", boxShadow: "0 2px 8px rgba(0,0,0,.08)",
-    opacity: "0", transition: "opacity .15s", pointerEvents: "none", whiteSpace: "nowrap",
-  },
-  ".qv-imgbox:hover .qv-img-alignbar": { opacity: "1", pointerEvents: "auto" },
-  ".qv-img-alignbar button": {
-    border: "none", background: "transparent", borderRadius: "5px", cursor: "pointer",
-    font: "13px/1 -apple-system, system-ui, sans-serif", padding: "3px 7px", color: "#6b675c",
-  },
-  ".qv-img-alignbar button:hover": { background: "#f0eee2" },
-  ".qv-img-alignbar button.on": { background: "#ff6f61", color: "#fff" },
+  ".qv-imgwrap:hover .qv-img": { outline: "2px solid #ffd5ce", outlineOffset: "2px", borderRadius: "2px" },
   ".cm-datauri": {
     display: "inline-block", padding: "0 7px", margin: "0 1px",
     background: "#f0eee2", border: "1px solid #ddd9c3", borderRadius: "6px",
@@ -937,7 +856,9 @@ const theme = EditorView.theme({
   ".qv-math": { color: "#333" },
   ".qv-math-block": { textAlign: "center", margin: "2px 0" },
   ".qv-block": { margin: "0", position: "relative" },
-  // In-place table editing chrome.
+  // A table block shrinks to the table's width so its × badge lands on the
+  // table's own top-right corner, not far out at the full-line right edge.
+  ".qv-block.qv-hastable": { width: "fit-content", maxWidth: "100%" },
   // Empty cells must stay clickable: give them real size and an invisible
   // filler so a fresh table isn't a stack of hairlines.
   ".qv-hastable": { cursor: "pointer" },
@@ -1006,8 +927,6 @@ function create(parent, opts = {}) {
     renderFrontmatter: opts.renderFrontmatter || opts.renderBlock || HOST.renderBlock,
     resolveAsset: opts.resolveAsset || HOST.resolveAsset,
     typeset: opts.typeset || HOST.typeset,
-    ctxMount: opts.ctxMount || HOST.ctxMount,
-    ctxClear: opts.ctxClear || HOST.ctxClear,
     editTable: opts.editTable || HOST.editTable,
     editTabset: opts.editTabset || HOST.editTabset,
     editCallout: opts.editCallout || HOST.editCallout,
