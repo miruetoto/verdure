@@ -61,22 +61,6 @@
   }
   .tbtn:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); transition-delay: .35s; }
   .tsep { width: 1px; height: 20px; background: var(--border); margin: 0 6px; flex: none; }
-  /* zoom control (top-right toolbar) */
-  #zoom-ctl {
-    display: inline-flex; align-items: center; flex: none;
-    border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden;
-    background: var(--bg);
-  }
-  #zoom-ctl button {
-    border: none; background: transparent; cursor: pointer; color: var(--body);
-    font: 600 12.5px/1 -apple-system, system-ui, sans-serif; padding: 0;
-    height: 26px; transition: background .12s, color .12s;
-  }
-  #zoom-ctl button:hover { background: var(--hover); color: var(--accent); }
-  #btn-zoom-out, #btn-zoom-in { width: 26px; font-size: 16px; }
-  #btn-zoom-reset { min-width: 44px; border-left: 1px solid var(--border); border-right: 1px solid var(--border); font-variant-numeric: tabular-nums; }
-  /* Editor document zoom: scales text/headings/math (em-based) via a variable. */
-  .cm-scroller { font-size: calc(16px * var(--qv-zoom, 1)) !important; }
   /* Left toolbar group pinned to the sidebar's width (232px + 1px border), so
      the tab strip begins exactly on the sidebar/editor split line below. */
   #status { color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; margin-left: 6px; }
@@ -487,12 +471,6 @@
         외부 변경
       </button>
       <span id="status"></span>
-      <div id="zoom-ctl">
-        <button id="btn-zoom-out" title="축소  (⌘−)">−</button>
-        <button id="btn-zoom-reset" title="기본 크기로  (⌘0)">100%</button>
-        <button id="btn-zoom-in" title="확대  (⌘+)">+</button>
-      </div>
-      <div class="tsep"></div>
       <button class="tbtn" id="btn-source" data-tip="소스 보기 (원문)  ⌘E">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M6 4.5 2.5 8 6 11.5"/><path d="M10 4.5 13.5 8 10 11.5"/>
@@ -2185,29 +2163,6 @@ async function doHelp() {
   addTab({ text: HELP_MD, title: "Pururum 도움말", path: "" });
 }
 document.getElementById("btn-help").onclick = doHelp;
-
-// ---- Document zoom (scales editor text/headings/math via --qv-zoom) ----
-const ZOOM_STEPS = [0.6, 0.7, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
-let zoomLevel = (() => { const v = parseFloat(localStorage.getItem("qv-zoom")); return v && v >= 0.6 && v <= 3 ? v : 1; })();
-function applyZoom() {
-  document.documentElement.style.setProperty("--qv-zoom", zoomLevel);
-  document.getElementById("btn-zoom-reset").textContent = Math.round(zoomLevel * 100) + "%";
-  localStorage.setItem("qv-zoom", String(zoomLevel));
-}
-function nudgeZoom(dir) {
-  // snap to the nearest step, then move one step in `dir`.
-  let i = ZOOM_STEPS.findIndex((s) => s >= zoomLevel - 1e-6);
-  if (i < 0) i = ZOOM_STEPS.length - 1;
-  if (dir > 0) i = Math.min(ZOOM_STEPS.length - 1, (ZOOM_STEPS[i] <= zoomLevel + 1e-6 ? i + 1 : i));
-  else i = Math.max(0, (ZOOM_STEPS[i] >= zoomLevel - 1e-6 && ZOOM_STEPS[i] > zoomLevel - 1e-6 ? i - 1 : i));
-  zoomLevel = ZOOM_STEPS[i]; applyZoom();
-}
-function resetZoom() { zoomLevel = 1; applyZoom(); }
-document.getElementById("btn-zoom-in").onclick = () => nudgeZoom(1);
-document.getElementById("btn-zoom-out").onclick = () => nudgeZoom(-1);
-document.getElementById("btn-zoom-reset").onclick = resetZoom;
-applyZoom();
-
 // Whole-document source (raw markdown) toggle — top-right toolbar button.
 const btnSource = document.getElementById("btn-source");
 function toggleSource() {
@@ -2386,10 +2341,6 @@ document.addEventListener("keydown", (e) => {
   // ⌘E toggles source/preview (Obsidian convention). ⌘/ is left to CodeMirror's
   // line-comment toggle, where it conventionally belongs.
   if (k === "e") { e.preventDefault(); toggleSource(); return; }
-  // Zoom (works regardless of editor focus): ⌘+ / ⌘= in, ⌘- out, ⌘0 reset.
-  if (k === "=" || k === "+") { e.preventDefault(); nudgeZoom(1); return; }
-  if (k === "-" || k === "_") { e.preventDefault(); nudgeZoom(-1); return; }
-  if (k === "0") { e.preventDefault(); resetZoom(); return; }
   // Backup shortcuts for when focus is outside the editor (CM handles these when focused).
   if (ed && ed.view.hasFocus) return;
   if (k === "n") { e.preventDefault(); doNew(); }
