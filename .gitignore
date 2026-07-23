@@ -36,3 +36,6 @@ editor-milkdown/dist/
 electron-shell/release/
 # Vditor vendored dist (regenerate: cp -R editor-vditor/node_modules/vditor/dist quarto_viewer/static/vendor/vditor/dist)
 quarto_viewer/static/vendor/vditor/
+
+# Session conversation logs — local working notes, never publish
+docs/SESSION-*.md
