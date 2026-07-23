@@ -3,9 +3,9 @@
 // Why Electron: every editor bug this project fought (caret jumps, selection
 // drift, blank math, dead clicks) reproduced ONLY in Tauri's WKWebView — never
 // in Chromium. The reference apps (Obsidian, Typora) are Chromium-based. This
-// shell runs the exact same frontend in Chromium and mirrors the Rust bridge
-// (verdure-tauri/src-tauri/src/lib.rs) command-for-command, same JSON shapes,
-// so index.html works unchanged.
+// shell runs the exact same frontend in Chromium and mirrors the retired
+// Tauri shell's Rust bridge command-for-command, same JSON shapes, so
+// index.html works unchanged.
 
 const { app, BrowserWindow, ipcMain, dialog, clipboard, shell } = require("electron");
 const fs = require("fs");
@@ -40,7 +40,14 @@ const stateOf = (p) => {
   return { text: readText(p), title: titleOf(p), path: p, folder: st.folder };
 };
 const ensureDefaultDir = () => {
-  const d = path.join(app.getPath("documents"), "Verdure");
+  const docs = app.getPath("documents");
+  const d = path.join(docs, "Pururum");
+  // One-time migration: the default folder used to be named after the app's
+  // old name (Verdure) — carry existing autosaved docs over.
+  const legacy = path.join(docs, "Verdure");
+  if (!fs.existsSync(d) && fs.existsSync(legacy)) {
+    try { fs.renameSync(legacy, d); } catch (_) {}
+  }
   fs.mkdirSync(d, { recursive: true });
   return d;
 };

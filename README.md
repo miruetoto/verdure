@@ -81,5 +81,5 @@ Use `brew uninstall --zap --cask pururum` to drop Pururum's settings at the same
 ### If you used 2 or 3
 
 Drag **Pururum** from **Applications** to the Trash. Untitled documents you let
-the app auto-save live in `~/Documents/Verdure` — delete that folder too if you
+the app auto-save live in `~/Documents/Pururum` — delete that folder too if you
 don't want them.

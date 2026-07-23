@@ -21,8 +21,8 @@ cask "pururum" do
   end
 
   zap trash: [
-    "~/Library/Preferences/com.local.verdure.plist",
-    "~/Library/Saved Application State/com.local.verdure.savedState",
-    "~/Library/WebKit/com.local.verdure",
+    "~/Library/Application Support/pururum",
+    "~/Library/Preferences/com.local.pururum.plist",
+    "~/Library/Saved Application State/com.local.pururum.savedState",
   ]
 end
