@@ -41,10 +41,10 @@
 }
 
 .qdoc {
-  /* Fixed 16px base. Document zoom is applied via CSS `zoom` on an ancestor
-     (.cm-scroller in the editor, .doc-export in the export), which scales this
-     whole subtree — so scaling the font here too would double-apply. */
-  font-family: var(--serif); font-size: 16px; line-height: 1.5;
+  /* 16px base scaled by the document-zoom multiplier (default 1). Objects and
+     math are em/relative, so scaling the font cascades to them while the layout
+     column stays at a fixed px width (keeping the left edge put across zooms). */
+  font-family: var(--serif); font-size: calc(16px * var(--qv-zoom, 1)); line-height: 1.5;
   color: var(--body); word-wrap: break-word;
 }
 .qdoc > *:first-child { margin-top: 0; }

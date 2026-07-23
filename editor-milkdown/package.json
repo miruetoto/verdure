@@ -1,0 +1,21 @@
+{
+  "name": "editor-milkdown",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "esbuild src/editor.js --bundle --format=iife --global-name=QVEditor --outfile=../quarto_viewer/static/vendor/milkdown/editor.bundle.js --minify",
+    "build:dev": "esbuild src/editor.js --bundle --format=iife --global-name=QVEditor --outfile=dist/editor.bundle.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@milkdown/kit": "^7.21.3",
+    "esbuild": "^0.28.1",
+    "remark-directive": "^3.0.1",
+    "remark-frontmatter": "^5.0.0",
+    "remark-math": "^6.0.0"
+  }
+}

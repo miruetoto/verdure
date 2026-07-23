@@ -24,3 +24,4 @@ dist/
 err/
 
 .DS_Store
+editor-milkdown/dist/
