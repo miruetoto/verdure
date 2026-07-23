@@ -1625,9 +1625,14 @@ function renderTblGrid(focusR, focusC) {
     b.type = "button"; b.textContent = ALIGN_GLYPH[m.aligns[c] ?? "null"] + " 정렬";
     b.title = "이 열 정렬 바꾸기";
     b.onclick = () => {
+      // Update in place (no full grid rebuild): cycle the glyph and re-align this
+      // column's cells. Rebuilding here reset focus and felt like it needed two
+      // clicks.
       const order = [null, "left", "center", "right"];
       m.aligns[c] = order[(order.indexOf(m.aligns[c] ?? null) + 1) % order.length];
-      collectTblGrid(); renderTblGrid(tblState.last?.r, tblState.last?.c);
+      b.textContent = ALIGN_GLYPH[m.aligns[c] ?? "null"] + " 정렬";
+      tableModal.querySelectorAll(`#tbl-grid input[data-c="${c}"]`).forEach((inp) => { inp.style.textAlign = m.aligns[c] || "left"; });
+      updateTblPreview();
     };
     td.appendChild(b); al.appendChild(td);
   }
@@ -1973,12 +1978,17 @@ function updateTabsetPreview() {
   // Mirror the tab being edited: the preview shows that same tab as active.
   setTabsetPreviewActive(el, tsState.active);
   // Clicking a preview tab switches the editor to that tab too (kept in sync).
-  el.querySelectorAll(".tab-btn").forEach((btn) => btn.addEventListener("click", () => {
-    const idx = +btn.dataset.idx;
-    if (idx === tsState.active) return;
-    saveTabBody(); tsState.active = idx; renderTabsetBar(); loadTabBody();
-    const inp = document.querySelector("#tabset-tabbar .tstab.active input"); if (inp) inp.focus();
-  }));
+  el.querySelectorAll(".tab-btn").forEach((btn) => btn.addEventListener("click", () => setActiveTab(+btn.dataset.idx)));
+}
+// Switch tab WITHOUT rebuilding the bar — rebuilding mid-click destroyed the
+// element being clicked, so the first click was swallowed (two-click bug). Just
+// toggle the active class and swap the body/preview.
+function setActiveTab(i) {
+  if (!tsState || i === tsState.active) return;
+  saveTabBody();
+  tsState.active = i;
+  document.querySelectorAll("#tabset-tabbar .tstab").forEach((el, j) => el.classList.toggle("active", j === i));
+  loadTabBody();
 }
 function renderTabsetBar() {
   const bar = document.getElementById("tabset-tabbar");
@@ -1989,7 +1999,7 @@ function renderTabsetBar() {
     const inp = document.createElement("input");
     inp.value = t.title; inp.placeholder = "탭 이름";
     inp.addEventListener("input", () => { t.title = inp.value; updateTabsetPreview(); });
-    inp.addEventListener("focus", () => { if (i !== tsState.active) { saveTabBody(); tsState.active = i; renderTabsetBar(); loadTabBody(); document.querySelector(`#tabset-tabbar .tstab:nth-child(${i + 1}) input`).focus(); } });
+    inp.addEventListener("focus", () => setActiveTab(i));
     el.appendChild(inp);
     if (tsState.m.tabs.length > 1) {
       const x = document.createElement("button");
@@ -2002,7 +2012,7 @@ function renderTabsetBar() {
       };
       el.appendChild(x);
     }
-    el.addEventListener("mousedown", (e) => { if (e.target === inp || e.target.closest(".tsx")) return; saveTabBody(); tsState.active = i; renderTabsetBar(); loadTabBody(); });
+    el.addEventListener("mousedown", (e) => { if (e.target.closest(".tsx")) return; setActiveTab(i); });
     bar.appendChild(el);
   });
 }
