@@ -137,6 +137,11 @@
   }
   #rail .tbtn::after { top: 50%; left: 40px; transform: translateY(-50%) translateX(-3px); }
   #rail .tbtn:hover::after { transform: translateY(-50%) translateX(0); }
+  /* File-action set centered over the 열린 문서/탐색기 column. */
+  #sidebar-toolbar {
+    display: flex; align-items: center; justify-content: center; gap: 3px;
+    padding: 8px 6px 4px; border-bottom: 1px solid var(--border);
+  }
   /* Active document name, centered in the header (Obsidian-style). */
   #hdr-title {
     position: absolute; left: 50%; top: 0; bottom: 0; transform: translateX(-50%);
@@ -510,32 +515,6 @@
     <!-- Fixed to the sidebar's width so the tab strip starts exactly at the
          sidebar/editor split line (tabs sit above the editor, VSCode-style). -->
     <div id="tb-left">
-    <button class="tbtn" id="btn-new" data-tip="새로 만들기  ⌘N">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M9 1.75H4.25A1.25 1.25 0 0 0 3 3v10a1.25 1.25 0 0 0 1.25 1.25h7.5A1.25 1.25 0 0 0 13 13V5.75L9 1.75Z"/>
-        <path d="M8.75 2v3.5h3.5"/><path d="M8 8v3.2M6.4 9.6h3.2"/>
-      </svg>
-    </button>
-    <button class="tbtn" id="btn-open" data-tip="파일 열기  ⌘O">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M1.75 4.25h4.1l1.2 1.5h7.2v6.5a1 1 0 0 1-1 1H1.75a1 1 0 0 1-1-1V4.25Z"/>
-        <path d="M.9 6.75h14.2"/>
-      </svg>
-    </button>
-    <button class="tbtn" id="btn-save" data-tip="저장  ⌘S">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M2.75 2.25h8.1L13.25 4.6V13a1 1 0 0 1-1 1H3.75a1 1 0 0 1-1-1V3.25a1 1 0 0 1 1-1Z"/>
-        <path d="M5 2.5v3h5v-3"/><path d="M5 9.5h6"/><path d="M5 11.5h6"/>
-      </svg>
-    </button>
-    <div class="tsep"></div>
-    <button class="tbtn" id="btn-pdf" data-tip="HTML로 저장하기">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M8 1.75v7.5"/><path d="M5.25 6.5 8 9.25 10.75 6.5"/>
-        <path d="M2.75 10.5V13a1 1 0 0 0 1 1h8.5a1 1 0 0 0 1-1v-2.5"/>
-      </svg>
-    </button>
-    <div class="tsep"></div>
     <button class="tbtn" id="btn-sidebar" data-tip="사이드바 접기/펴기">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5"/><path d="M6 2.75v10.5"/></svg>
     </button>
@@ -578,6 +557,35 @@
       <button class="tbtn" data-rail="symbol" data-tip="특수문자"><svg viewBox="0 0 16 16" fill="currentColor"><text x="8" y="12.5" text-anchor="middle" font-size="12" font-family="serif">Ω</text></svg></button>
     </nav>
     <aside id="sidebar">
+      <!-- File actions live WITH the sidebar (one set, centered) — the header
+           toggle hides them together with the panel, Obsidian-style. -->
+      <div id="sidebar-toolbar">
+        <button class="tbtn" id="btn-new" data-tip="새로 만들기  ⌘N">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 1.75H4.25A1.25 1.25 0 0 0 3 3v10a1.25 1.25 0 0 0 1.25 1.25h7.5A1.25 1.25 0 0 0 13 13V5.75L9 1.75Z"/>
+            <path d="M8.75 2v3.5h3.5"/><path d="M8 8v3.2M6.4 9.6h3.2"/>
+          </svg>
+        </button>
+        <button class="tbtn" id="btn-open" data-tip="파일 열기  ⌘O">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1.75 4.25h4.1l1.2 1.5h7.2v6.5a1 1 0 0 1-1 1H1.75a1 1 0 0 1-1-1V4.25Z"/>
+            <path d="M.9 6.75h14.2"/>
+          </svg>
+        </button>
+        <button class="tbtn" id="btn-save" data-tip="저장  ⌘S">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2.75 2.25h8.1L13.25 4.6V13a1 1 0 0 1-1 1H3.75a1 1 0 0 1-1-1V3.25a1 1 0 0 1 1-1Z"/>
+            <path d="M5 2.5v3h5v-3"/><path d="M5 9.5h6"/><path d="M5 11.5h6"/>
+          </svg>
+        </button>
+        <div class="tsep"></div>
+        <button class="tbtn" id="btn-pdf" data-tip="HTML로 저장하기">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 1.75v7.5"/><path d="M5.25 6.5 8 9.25 10.75 6.5"/>
+            <path d="M2.75 10.5V13a1 1 0 0 0 1 1h8.5a1 1 0 0 0 1-1v-2.5"/>
+          </svg>
+        </button>
+      </div>
       <div id="side-tabs-head">열린 문서</div>
       <div id="side-tabs"></div>
       <div id="sidebar-head">
