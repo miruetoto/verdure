@@ -97,7 +97,12 @@
      the ProseMirror migration): peach, never the system lavender. */
   .qv-milkdown .ProseMirror ::selection { background: #ffd5ce; }
   .qv-milkdown .ProseMirror::selection { background: #ffd5ce; }
-  .qv-milkdown .ProseMirror-selectednode { outline: 2px solid #ffd5ce; border-radius: 3px; }
+  /* Selected atom (NodeSelection): a clean outline only. Without the
+     transparent override WebKit ALSO floods the whole block with the native
+     selection color — the title block turned into a solid peach slab. */
+  .qv-milkdown .ProseMirror-selectednode { outline: 2px solid #ffb3a7; border-radius: 3px; }
+  .qv-milkdown .ProseMirror-selectednode::selection { background: transparent; }
+  .qv-milkdown .ProseMirror-selectednode ::selection { background: transparent; }
   /* Tight visual rhythm: PM wraps list items in <p>; kill their margins. */
   .qv-milkdown .ProseMirror li > p { margin: 0; }
   .qv-milkdown .qv-block { cursor: pointer; }
@@ -2514,6 +2519,10 @@ window.addEventListener("pywebviewready", async () => {
   }
   ed.focus();
   pollLoop();
+  // Preload MathJax shortly after boot (local file, cheap in Tauri): the first
+  // typed formula then renders synchronously instead of racing the lazy load
+  // (which left blank formulas on the real WKWebView until the async pass).
+  setTimeout(() => { try { ensureMathJax(); } catch (_) {} }, 600);
 });
 </script>
 </body>

@@ -120,6 +120,11 @@
    ("튀는"). Display/block math keeps a slight bump, as is conventional. */
 .math.display { font-size: 1.1em !important; margin: 1em 0 !important; display: block; }
 .math.inline { font-size: 1em !important; }
+/* MathJax "matchFontHeight" writes an inline font-size (~121%) on every
+   mjx-container to align x-heights with the serif body — with 나눔명조/Noto
+   Serif that reads visibly oversized ("수식이 좀 크다"). Pin it to the body
+   size; the wrapper spans above control any intentional scaling. */
+mjx-container { font-size: 100% !important; }
 /* Only BLOCK/display math may scroll horizontally. Applying overflow-x:auto to
    inline math makes WKWebView blow the inline-block up to max-width (the whole
    line), leaving a huge gap after inline formulas. Scope it to display math. */
