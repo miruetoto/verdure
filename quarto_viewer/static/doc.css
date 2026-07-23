@@ -184,6 +184,14 @@ mjx-assistive-mml { display: none !important; }
 }
 .callout-header svg { width: 1.05em; height: 1.05em; flex: none; color: var(--cc, var(--co-note)); }
 .callout-body { padding: 0.5em 0.65em; font-size: 0.9em; }
+/* Collapsible callouts (collapse="true"): the header is a <summary>. */
+summary.callout-header { cursor: pointer; list-style: none; }
+summary.callout-header::-webkit-details-marker { display: none; }
+summary.callout-header::after {
+  content: "›"; margin-left: auto; opacity: .55; font-weight: 700;
+  transform: rotate(90deg); transition: transform .15s;
+}
+details.callout[open] > summary.callout-header::after { transform: rotate(-90deg); }
 .callout-body > *:first-child { margin-top: 0; }
 .callout-body > *:last-child { margin-bottom: 0; }
 .callout-note      { --cc: var(--co-note);      --ccbg: var(--co-note-bg); }

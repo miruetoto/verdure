@@ -610,6 +610,7 @@
         </div>
       </div>
       <input type="text" id="co-title" class="co-title" placeholder="제목 (비우면 종류 기본 제목 사용)">
+      <label class="tbl-center"><input type="checkbox" id="co-collapse"> 접을 수 있는 콜아웃 (기본은 접힌 상태)</label>
       <textarea id="co-body" class="tabset-body" placeholder="콜아웃 내용 (마크다운)"></textarea>
       <div class="obj-preview"><div class="obj-preview-label">미리보기</div><div id="co-preview" class="qdoc"></div></div>
       <div class="tbl-foot">
@@ -1066,6 +1067,13 @@ function wrapDiv(spec, innerHtml) {
     const type = callout.slice("callout-".length);
     const kind = CALLOUT_ICONS[type] ? type : "note";
     const title = titleM ? titleM[1] : CALLOUT_TITLES[kind];
+    // Quarto collapsible callouts: collapse="true" starts folded,
+    // collapse="false" is foldable but starts open.
+    const colM = spec.match(/collapse\s*=\s*["']?(true|false)/i);
+    if (colM) {
+      const open = colM[1].toLowerCase() === "false" ? " open" : "";
+      return `<details class="callout callout-${escapeHtml(kind)}"${open}><summary class="callout-header">${CALLOUT_ICONS[kind]}<span>${escapeHtml(title)}</span></summary><div class="callout-body">${innerHtml}</div></details>`;
+    }
     return `<div class="callout callout-${escapeHtml(kind)}"><div class="callout-header">${CALLOUT_ICONS[kind]}<span>${escapeHtml(title)}</span></div><div class="callout-body">${innerHtml}</div></div>`;
   }
   return `<div class="qdiv ${escapeHtml(classes.join(" "))}">${innerHtml}</div>`;
@@ -2101,7 +2109,8 @@ function editImageFromWidget(info, apply, remove, rewrite) {
 const calloutModal = document.getElementById("callout-modal");
 let coState = null;   // { onApply, onDelete, type }
 function updateCoPreview() {
-  const m = { type: coState ? coState.type : "note", title: document.getElementById("co-title").value.trim(), body: document.getElementById("co-body").value };
+  const m = { type: coState ? coState.type : "note", title: document.getElementById("co-title").value.trim(),
+    body: document.getElementById("co-body").value, collapse: document.getElementById("co-collapse").checked };
   const el = document.getElementById("co-preview");
   el.innerHTML = mdToHtml(QVEditor.serializeCallout(m));
   enhance(el); typeset(el);
@@ -2111,6 +2120,7 @@ function openCalloutEditor(model, onApply, onDelete) {
   document.querySelectorAll("#co-types button").forEach((b) => b.classList.toggle("on", b.dataset.co === coState.type));
   document.getElementById("co-title").value = model.title || "";
   document.getElementById("co-body").value = model.body || "";
+  document.getElementById("co-collapse").checked = !!model.collapse;
   document.getElementById("co-delete").hidden = !onDelete;
   updateCoPreview();
   calloutModal.removeAttribute("hidden");
@@ -2131,7 +2141,8 @@ document.getElementById("co-cancel").onclick = closeCalloutEditor;
 document.getElementById("co-delete").onclick = () => { if (!coState) return; const d = coState.onDelete; closeCalloutEditor(); if (d) d(); };
 document.getElementById("co-apply").onclick = () => {
   if (!coState) return;
-  const m = { type: coState.type, title: document.getElementById("co-title").value.trim(), body: document.getElementById("co-body").value };
+  const m = { type: coState.type, title: document.getElementById("co-title").value.trim(),
+    body: document.getElementById("co-body").value, collapse: document.getElementById("co-collapse").checked };
   const text = QVEditor.serializeCallout(m);
   const done = coState.onApply; closeCalloutEditor(); done(text);
 };

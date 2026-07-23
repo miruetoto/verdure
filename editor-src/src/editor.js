@@ -320,15 +320,18 @@ function parseCallout(src) {
   const head = lines[0] || "";
   const type = (/\.callout-([A-Za-z]+)/.exec(head) || [])[1] || "note";
   const title = (/title\s*=\s*["']([^"']*)["']/.exec(head) || [])[1] || "";
+  const collapse = /collapse\s*=\s*["']?true/i.test(head);
   let end = lines.length - 1;
   while (end > 0 && !/^:{3,}\s*$/.test(lines[end])) end--;
   const body = lines.slice(1, end).join("\n").replace(/^\n+|\n+$/g, "");
-  return { type, title, body };
+  return { type, title, body, collapse };
 }
 function serializeCallout(m) {
   const type = m.type || "note";
   const t = (m.title || "").trim();
-  const head = "::: {.callout-" + type + (t ? ' title="' + t.replace(/"/g, "'") + '"' : "") + "}";
+  const head = "::: {.callout-" + type
+    + (t ? ' title="' + t.replace(/"/g, "'") + '"' : "")
+    + (m.collapse ? ' collapse="true"' : "") + "}";
   const body = (m.body || "").replace(/\s+$/, "");
   return head + "\n" + (body ? body + "\n" : "") + ":::";
 }
@@ -338,9 +341,16 @@ function enhanceCalloutWidget(el, view, widget) {
   const ops = widgetDocOps(view, el, widget.src);
   el.addEventListener("mousedown", (e) => {
     if (e.target.closest("a")) return;
+    // Collapsible callout: the header's NATIVE <details> toggle handles the
+    // fold — only keep the event away from CodeMirror and skip the popup.
+    // (Manually flipping .open here double-toggled against the native click.)
+    if (e.target.closest("summary")) { e.stopPropagation(); return; }
     e.preventDefault(); e.stopPropagation();
     HOST.editCallout(widget.src, ops.replace, ops.remove);
   });
+  // Fold/unfold changes the widget's height — re-measure or clicks below drift.
+  el.querySelectorAll("details").forEach((d) =>
+    d.addEventListener("toggle", () => { try { view.requestMeasure(); } catch (_) {} }));
   addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove());
 }
 
