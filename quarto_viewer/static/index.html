@@ -16,6 +16,7 @@
     -webkit-font-smoothing: antialiased;
   }
   header {
+    position: relative;
     display: flex; align-items: center; gap: 3px;
     height: 48px; padding: 0 10px; flex: none;
     background: var(--toolbar);
@@ -49,12 +50,8 @@
   /* Left toolbar group pinned to the sidebar's width (232px + 1px border), so
      the tab strip begins exactly on the sidebar/editor split line below. */
   #tb-left {
-    display: flex; align-items: center; gap: 3px;
-    /* header has 10px left padding; track the sidebar so tabs start at the split,
-       but never squeeze below the buttons' own width */
-    width: calc(var(--sidebar-w, 232px) - 9px); min-width: max-content; flex: none;
+    display: flex; align-items: center; gap: 3px; flex: none;  /* natural width */
   }
-  html.qv-web #tb-left { width: auto; }  /* no sidebar split to align tabs to */
   #status { color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; margin-left: 6px; }
   #reload-btn {
     display: none; align-items: center; gap: 5px; flex: none; margin-left: 4px;
@@ -66,12 +63,20 @@
   #reload-btn.show { display: inline-flex; }
 
   /* ---- tab strip ---- */
+  /* Tabs are absolutely pinned to start exactly at the sidebar/editor divider,
+     independent of the toolbar buttons' width (width-matching diverged between
+     headless WebKit and the real WKWebView). Right edge leaves room for the
+     right-hand controls. */
   #tabs {
-    flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px;
-    overflow-x: auto; overflow-y: hidden; height: 100%; padding: 0 2px;
-    scrollbar-width: none;
+    position: absolute; left: calc(var(--sidebar-w, 232px) + 1px); right: 150px;
+    top: 6px; bottom: 0; display: flex; align-items: center; gap: 4px;
+    overflow-x: auto; overflow-y: hidden; padding: 0 2px; scrollbar-width: none;
   }
+  html.qv-web #tabs { left: 10px; }   /* no sidebar → start at the toolbar */
   #tabs::-webkit-scrollbar { display: none; }
+  /* #tabs is out of flow, so a flex spacer keeps the right-hand controls
+     (reload/status/source/help) pinned to the right edge. */
+  #hdr-spacer { flex: 1; }
   /* Tabs are floating pills, vertically centered in the toolbar. (The previous
      browser-style "open bottom" tab never actually reached the toolbar's bottom
      border, so its transparent bottom edge floated mid-air and looked crooked.) */
@@ -376,6 +381,7 @@
     </button>
     </div>
     <div id="tabs"></div>
+    <div id="hdr-spacer"></div>
     <button id="reload-btn" title="외부에서 파일이 바뀌었습니다 — 편집 내용을 버리고 다시 불러옵니다">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.7 2.5v3h-3"/></svg>
       외부 변경
