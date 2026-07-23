@@ -502,7 +502,7 @@
       </svg>
     </button>
     <div class="tsep"></div>
-    <button class="tbtn" id="btn-insert" data-tip="삽입 — 콜아웃·표·탭셋">
+    <button class="tbtn" id="btn-insert" data-tip="삽입">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <rect x="1.75" y="2.25" width="12.5" height="4" rx="1"/>
         <path d="M1.75 9.75h7"/><path d="M12 8.25v5M9.5 10.75h5"/>
@@ -514,6 +514,18 @@
         <path d="M8 1.75v7.5"/><path d="M5.25 6.5 8 9.25 10.75 6.5"/>
         <path d="M2.75 10.5V13a1 1 0 0 0 1 1h8.5a1 1 0 0 0 1-1v-2.5"/>
       </svg>
+    </button>
+    <div class="tsep"></div>
+    <!-- Frequent inserts promoted from the 삽입 menu into the space the
+         horizontal tab strip freed up. -->
+    <button class="tbtn" id="btn-ins-callout" data-tip="콜아웃">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 3v10"/></svg>
+    </button>
+    <button class="tbtn" id="btn-ins-table" data-tip="표">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6.5h12M6.5 6.5v6.5"/></svg>
+    </button>
+    <button class="tbtn" id="btn-ins-tabset" data-tip="탭셋">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="12" height="7" rx="1.5"/><path d="M4.2 6V4.2h3.4V6"/></svg>
     </button>
     </div>
     <div id="tabs"></div>
@@ -2375,6 +2387,10 @@ insertMenu.querySelectorAll("button[data-snip]").forEach((b) => {
 document.addEventListener("click", (e) => {
   if (e.target !== insertBtn && !insertBtn.contains(e.target) && !insertMenu.contains(e.target)) closeInsertMenu();
 });
+// Direct toolbar shortcuts for the three everyday objects.
+document.getElementById("btn-ins-callout").onclick = () => insertBlock("callout");
+document.getElementById("btn-ins-table").onclick = () => insertBlock("table");
+document.getElementById("btn-ins-tabset").onclick = () => insertBlock("tabset");
 
 // 삽입 → 이미지: 파일을 골라 attachments/에 복사하고 마크다운을 삽입한다.
 // (웹에서 폴더 핸들이 없으면 붙여넣기와 동일하게 문서 안에 내장된다.)
