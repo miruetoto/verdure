@@ -42,10 +42,10 @@
   .tbtn.on { background: var(--accent); color: #fff; }
   .tbtn:active { transform: translateY(.5px); }
   .tbtn svg { width: 17px; height: 17px; }
-  /* Source-mode is a dedicated round toggle: always a visible ring, fills coral
-     with a glow when engaged, so its on/off state reads at a glance. */
-  #btn-source { border-radius: 50%; border-color: var(--border-strong); color: var(--body); }
-  #btn-source:hover { border-color: var(--accent); }
+  /* Source + help are a matched pair of round outlined buttons (balanced).
+     Source fills coral with a glow when engaged so its on/off state reads. */
+  #btn-source, #btn-help { border-radius: 50%; border: 1px solid var(--border-strong); color: var(--body); }
+  #btn-source:hover, #btn-help:hover { border-color: var(--accent); background: transparent; color: var(--accent); }
   #btn-source.on {
     background: var(--accent); color: #fff; border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
@@ -609,10 +609,7 @@
           <button type="button" data-al="" title="기본(정렬 없음)">—</button>
         </div>
         <span class="spacer"></span>
-        <span class="img-label">크기</span>
-        <input type="range" id="img-width" min="20" max="100" step="5" value="100">
-        <span id="img-width-val" class="img-wval">100%</span>
-        <button type="button" id="img-width-reset" class="dtool">원본</button>
+        <span class="tbl-hint">크기는 그림 모서리를 드래그해 조절하세요</span>
       </div>
       <div class="img-row">
         <span class="img-label">캡션</span>
@@ -1158,6 +1155,25 @@ function renderInto(container, text) {
   imagesReady = enhance(container);
   typeset(container);
 }
+// Replace every url(...font) in a CSS string with a base64 data URI so the
+// exported HTML is fully self-contained (relative font paths won't resolve from
+// a temp file). Only the fonts actually referenced (MathJax injects @font-face
+// solely for glyphs it used) are fetched, keeping the size bounded.
+async function inlineFontUrls(css) {
+  const urls = [...new Set([...css.matchAll(/url\((['"]?)([^'")]+\.(?:woff2|woff|ttf|otf))\1\)/g)].map((m) => m[2]))];
+  for (const u of urls) {
+    try {
+      const bytes = new Uint8Array(await (await fetch(u)).arrayBuffer());
+      let bin = ""; const CH = 0x8000;
+      for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+      const ext = u.split(".").pop().toLowerCase();
+      const mime = ext === "ttf" ? "font/ttf" : ext === "otf" ? "font/otf" : ext === "woff2" ? "font/woff2" : "font/woff";
+      const dataUrl = "data:" + mime + ";base64," + btoa(bin);
+      for (const q of ["'", '"', ""]) css = css.split("url(" + q + u + q + ")").join("url(" + q + dataUrl + q + ")");
+    } catch (_) { /* leave the url as-is if the font can't be fetched */ }
+  }
+  return css;
+}
 async function doPdf() {
   renderInto(exportDoc, ed.getValue());
   await imagesReady;
@@ -1199,8 +1215,12 @@ async function doPdf() {
   const [ghCss, docCss, printCss] = await Promise.all([
     cssText("vendor/github.min.css"), cssText("doc.css"), cssText("print.css"),
   ]);
+  // Embed every referenced font (NanumMyeongjo body + MathJax math glyphs) as a
+  // base64 data URI, so the standalone export renders identically to the app —
+  // math in real italic, Hangul in 나눔명조 — with no unresolved relative URLs.
+  const styleText = await inlineFontUrls(`${ghCss}\n${docCss}\n${printCss}\n${mjxCss}`);
   const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>`
-    + `<style>${ghCss}\n${docCss}\n${printCss}\n${mjxCss}</style></head>`
+    + `<style>${styleText}</style></head>`
     + `<body><article class="doc-print qdoc">${clone.innerHTML}</article></body></html>`;
   try {
     const r = await window.pywebview.api.open_export(html);
@@ -1706,11 +1726,6 @@ function openImageEditor(info, ops) {
   drawColor = "#ff0039"; erasing = false; syncImgTools();
   document.querySelectorAll("#img-aligns button").forEach((b) =>
     b.classList.toggle("on", (b.dataset.al || "") === (info.align || "")));
-  const wpct = /^(\d+)%$/.exec(info.width || "");
-  const slider = document.getElementById("img-width");
-  slider.value = wpct ? +wpct[1] : 100;
-  document.getElementById("img-width-val").textContent =
-    info.width ? (wpct ? wpct[1] + "%" : info.width) : "원본";
   document.getElementById("img-delete").hidden = !ops.remove;
   imageModal.removeAttribute("hidden");
 }
@@ -1757,18 +1772,6 @@ document.querySelectorAll("#img-aligns button").forEach((b) => {
     document.querySelectorAll("#img-aligns button").forEach((x) => x.classList.toggle("on", x === b));
   };
 });
-document.getElementById("img-width").oninput = (e) => {
-  if (!imgState) return;
-  const p = +e.target.value;
-  imgState.width = p + "%";
-  document.getElementById("img-width-val").textContent = p + "%";
-};
-document.getElementById("img-width-reset").onclick = () => {
-  if (!imgState) return;
-  imgState.width = null;
-  document.getElementById("img-width").value = 100;
-  document.getElementById("img-width-val").textContent = "원본";
-};
 document.getElementById("img-cancel").onclick = closeImageEditor;
 document.getElementById("img-apply").onclick = async () => {
   if (!imgState) return;

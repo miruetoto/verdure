@@ -128,27 +128,41 @@ class ImageWidget extends WidgetType {
     if (/^(https?:|data:)/.test(this.src)) img.src = this.src;
     else HOST.resolveAsset(this.src).then((uri) => { if (uri) img.src = uri; else fail(); }).catch(fail);
     img.addEventListener("error", fail);
-    // Like tables/tabsets: clicking the image opens the host's popup editor
-    // (align / size / delete). A modal never fights CodeMirror for focus, so no
-    // more hide-and-seek toolbar. Also drop the caret after the widget so a
-    // plain Backspace deletes it too.
+    const raw = this.raw;
+    // Clicking the image opens the popup editor (align / caption / delete).
     wrap.addEventListener("mousedown", (e) => {
       e.preventDefault(); e.stopPropagation();
       placeCursor(view, wrap);
       if (!HOST.editImage) return;
-      const ops = imageDocOps(view, wrap, this.raw);
+      const ops = imageDocOps(view, wrap, raw);
       HOST.editImage(
         { src: this.src, alt: this.alt, width: this.width, align: this.align, preview: img.currentSrc || img.src },
         ops.apply, ops.remove, ops.rewrite);
     });
-    // The alt text is the Quarto figure caption — show it under the image.
+    // Corner grip: drag to resize live, persisted as a Quarto {width=N} attribute.
+    const grip = document.createElement("span");
+    grip.className = "qv-img-grip";
+    grip.title = "드래그해서 크기 조절";
+    box.appendChild(grip);
+    grip.addEventListener("mousedown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const startX = e.clientX, startW = img.getBoundingClientRect().width;
+      const move = (ev) => { img.style.width = Math.max(40, Math.round(startW + ev.clientX - startX)) + "px"; };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        imageDocOps(view, wrap, raw).apply({ width: Math.round(img.getBoundingClientRect().width) });
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+    // The alt text is the Quarto figure caption — show it directly under the image.
     if (this.alt) {
       const cap = document.createElement("span");
       cap.className = "qv-imgcap";
       cap.textContent = this.alt;
       wrap.appendChild(cap);
     }
-    const raw = this.raw;
     addDeleteBadge(box, () => removeObjRange(view, wrap, raw));  // box = image-sized, so × sits on its corner
     return wrap;
   }
@@ -850,7 +864,7 @@ const MONO = "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Couri
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "#fcfcf7", color: "#555" },
   ".cm-scroller": {
-    fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans','Apple SD Gothic Neo','Malgun Gothic',Helvetica,Arial,sans-serif",
+    fontFamily: "'NanumMyeongjo','Nanum Myeongjo',serif",
     fontSize: "16px", lineHeight: "1.5", overflow: "auto",
   },
   ".cm-content": { padding: "44px 8px 200px", maxWidth: "820px", margin: "0 auto", caretColor: "#ff6f61" },
@@ -883,7 +897,14 @@ const theme = EditorView.theme({
   ".qv-imgwrap.qv-align-right": { display: "block", textAlign: "right" },
   ".qv-imgbox": { position: "relative", display: "inline-block", maxWidth: "100%" },
   ".qv-imgwrap:hover .qv-img": { outline: "2px solid #ffd5ce", outlineOffset: "2px", borderRadius: "2px" },
-  ".qv-imgcap": { display: "block", textAlign: "center", color: "#6c757d", fontSize: "0.9em", marginTop: "0.35em" },
+  // Caption sits directly beneath the image (block right under the box).
+  ".qv-imgcap": { display: "block", textAlign: "center", color: "#6c757d", fontSize: "0.9em", marginTop: "0.25em", lineHeight: "1.35" },
+  ".qv-img-grip": {
+    position: "absolute", right: "-6px", bottom: "-6px", width: "13px", height: "13px",
+    borderRadius: "3px", background: "#fff", border: "1.5px solid #ff6f61",
+    cursor: "nwse-resize", opacity: "0", transition: "opacity .15s",
+  },
+  ".qv-imgbox:hover .qv-img-grip": { opacity: "1" },
   ".cm-datauri": {
     display: "inline-block", padding: "0 7px", margin: "0 1px",
     background: "#f0eee2", border: "1px solid #ddd9c3", borderRadius: "6px",

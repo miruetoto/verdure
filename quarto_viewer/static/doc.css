@@ -5,11 +5,21 @@
    styles.css), rendered at docs/Posts/*.html — not invented. Base rhythm:
    13.6px/1.5 NanumMyeongjo, coral headings/links, purple inline code. */
 
+/* 신록예찬 블로그와 동일한 나눔명조(세리프) — 한글·영문 모두 이 서체로. */
+@font-face {
+  font-family: 'NanumMyeongjo';
+  src: url('fonts/NanumMyeongjo.otf') format('opentype');
+  font-weight: normal; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'NanumMyeongjo';
+  src: url('fonts/NanumMyeongjoBold.otf') format('opentype');
+  font-weight: bold; font-style: normal; font-display: swap;
+}
+
 :root {
-  /* GitHub's system font stack — clean sans-serif for both Korean and Latin
-     (macOS resolves Hangul to Apple SD Gothic Neo, Latin to San Francisco), so
-     scripts share consistent metrics. No bundled webfont. */
-  --serif: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Apple SD Gothic Neo", "Malgun Gothic", Helvetica, Arial, sans-serif;
+  /* Blog-exact serif: NanumMyeongjo for Hangul and Latin alike. */
+  --serif: 'NanumMyeongjo', 'Nanum Myeongjo', serif;
   --mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --bg: #fcfcf7;            /* body background */
   --body: #555555;          /* base text */
