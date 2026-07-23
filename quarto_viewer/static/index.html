@@ -97,21 +97,19 @@
   #reload-btn.show { display: inline-flex; }
 
   /* ---- tab strip ---- */
-  /* Tabs are absolutely pinned to start exactly at the sidebar/editor divider,
-     independent of the toolbar buttons' width (width-matching diverged between
-     headless WebKit and the real WKWebView). Right edge leaves room for the
-     right-hand controls. */
+  /* Tabs are absolutely pinned to start exactly at the PAPER's left edge
+     (sidebar + 1px divider + 20px desk gutter), independent of the toolbar
+     buttons' width. One rule for mac and web — the web grew the same sidebar,
+     so its old "no sidebar → flex flow" fallback is gone. */
   #tabs {
-    position: absolute; left: calc(var(--sidebar-w, 260px) + 1px); right: 84px;
+    position: absolute; left: calc(var(--sidebar-w, 260px) + 21px); right: 84px;
     top: 6px; bottom: 0; display: flex; align-items: center; gap: 4px;
     overflow-x: auto; overflow-y: hidden; padding: 0 2px; scrollbar-width: none;
   }
-  /* Web has no sidebar, so the desktop's absolute "align tabs to the sidebar
-     edge" layout would overlap the toolbar icons. Fall back to plain flex flow:
-     [icons] [tabs] [right controls] — same icon set/order as the app. */
-  html.qv-web header { display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; }
-  html.qv-web #tb-left, html.qv-web #tabs, html.qv-web #hdr-right { position: static; left: auto; right: auto; top: auto; bottom: auto; }
-  html.qv-web #tabs { flex: 1; min-width: 0; }
+  /* Sidebar hidden → the paper starts at the window edge's 20px gutter. */
+  html.qv-sb-hidden #tabs { left: 20px; }
+  /* Web hides the 3px resizer strip, shifting the paper 3px left of the mac's. */
+  html.qv-web #tabs { left: calc(var(--sidebar-w, 260px) + 18px); }
   #tabs::-webkit-scrollbar { display: none; }
   /* Tabs are floating pills, vertically centered in the toolbar. (The previous
      browser-style "open bottom" tab never actually reached the toolbar's bottom
