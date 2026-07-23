@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Verdure",
+  "productName": "Pururum",
   "version": "0.3.0",
   "identifier": "com.local.verdure",
   "build": {
@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "푸르름",
+        "title": "Pururum",
         "width": 1280,
         "height": 860,
         "minWidth": 640,

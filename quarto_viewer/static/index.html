@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>푸르름</title>
+<title>Pururum</title>
 <link rel="stylesheet" href="vendor/github.min.css" />
 <link rel="stylesheet" href="doc.css" />
 <style>
@@ -15,16 +15,21 @@
     display: flex; flex-direction: column; overflow: hidden;
     -webkit-font-smoothing: antialiased;
   }
+  /* The header lays its three regions out with ABSOLUTE positioning, not flex.
+     Flexbox spread the toolbar buttons unpredictably in the real WKWebView
+     (fine in headless) — absolute positions can't diverge. */
   header {
-    position: relative;
-    display: flex; align-items: center; gap: 3px;
-    height: 48px; padding: 0 10px; flex: none;
+    position: relative; height: 48px; flex: none;
     background: var(--toolbar);
-    /* No backdrop-filter: in WebKit it clips descendants to the header box, so
-       the button tooltips (which hang below the header) were cut off. */
     border-bottom: 1px solid var(--border);
     -webkit-user-select: none; user-select: none;
   }
+  #tb-left, #hdr-right {
+    position: absolute; top: 0; bottom: 0;
+    display: flex; align-items: center; gap: 3px;
+  }
+  #tb-left { left: 10px; }
+  #hdr-right { right: 8px; }
   /* icon toolbar buttons */
   .tbtn {
     position: relative; display: inline-flex; align-items: center; justify-content: center;
@@ -49,9 +54,6 @@
   .tsep { width: 1px; height: 20px; background: var(--border); margin: 0 6px; flex: none; }
   /* Left toolbar group pinned to the sidebar's width (232px + 1px border), so
      the tab strip begins exactly on the sidebar/editor split line below. */
-  #tb-left {
-    display: flex; align-items: center; gap: 3px; flex: none;  /* natural width */
-  }
   #status { color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; margin-left: 6px; }
   #reload-btn {
     display: none; align-items: center; gap: 5px; flex: none; margin-left: 4px;
@@ -68,15 +70,12 @@
      headless WebKit and the real WKWebView). Right edge leaves room for the
      right-hand controls. */
   #tabs {
-    position: absolute; left: calc(var(--sidebar-w, 232px) + 1px); right: 150px;
+    position: absolute; left: calc(var(--sidebar-w, 232px) + 1px); right: 84px;
     top: 6px; bottom: 0; display: flex; align-items: center; gap: 4px;
     overflow-x: auto; overflow-y: hidden; padding: 0 2px; scrollbar-width: none;
   }
   html.qv-web #tabs { left: 10px; }   /* no sidebar → start at the toolbar */
   #tabs::-webkit-scrollbar { display: none; }
-  /* #tabs is out of flow, so a flex spacer keeps the right-hand controls
-     (reload/status/source/help) pinned to the right edge. */
-  #hdr-spacer { flex: 1; }
   /* Tabs are floating pills, vertically centered in the toolbar. (The previous
      browser-style "open bottom" tab never actually reached the toolbar's bottom
      border, so its transparent bottom edge floated mid-air and looked crooked.) */
@@ -154,7 +153,6 @@
      stays at the left edge (drag right or double-click to reopen). */
   html.qv-sb-hidden #sidebar { display: none; }
   html.qv-sb-hidden #sidebar-resizer { margin-left: 0; }
-  html.qv-sb-hidden #tb-left { width: auto; }
   html.qv-sb-hidden #ctxbar { padding-left: 10px; }
   html.qv-web #sidebar { display: none; }  /* web build: no folder access → no explorer */
   /* No border-bottom here: it sat at a height nothing on the editor side
@@ -381,22 +379,23 @@
     </button>
     </div>
     <div id="tabs"></div>
-    <div id="hdr-spacer"></div>
-    <button id="reload-btn" title="외부에서 파일이 바뀌었습니다 — 편집 내용을 버리고 다시 불러옵니다">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.7 2.5v3h-3"/></svg>
-      외부 변경
-    </button>
-    <span id="status"></span>
-    <button class="tbtn" id="btn-source" data-tip="소스 보기 (원문)  ⌘/">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M6 4.5 2.5 8 6 11.5"/><path d="M10 4.5 13.5 8 10 11.5"/>
-      </svg>
-    </button>
-    <button class="tbtn" id="btn-help" data-tip="도움말">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="8" cy="8" r="6.25"/><path d="M6.3 6.1a1.75 1.75 0 1 1 2.4 1.63c-.5.2-.7.5-.7 1.02V9.2"/><path d="M8 11.4h.01"/>
-      </svg>
-    </button>
+    <div id="hdr-right">
+      <button id="reload-btn" title="외부에서 파일이 바뀌었습니다 — 편집 내용을 버리고 다시 불러옵니다">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.7 2.5v3h-3"/></svg>
+        외부 변경
+      </button>
+      <span id="status"></span>
+      <button class="tbtn" id="btn-source" data-tip="소스 보기 (원문)  ⌘/">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 4.5 2.5 8 6 11.5"/><path d="M10 4.5 13.5 8 10 11.5"/>
+        </svg>
+      </button>
+      <button class="tbtn" id="btn-help" data-tip="도움말">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="8" cy="8" r="6.25"/><path d="M6.3 6.1a1.75 1.75 0 1 1 2.4 1.63c-.5.2-.7.5-.7 1.02V9.2"/><path d="M8 11.4h.01"/>
+        </svg>
+      </button>
+    </div>
   </header>
   <!-- Fixed context bar: table/image controls always appear HERE (never
        floating over content). Hidden when nothing is active. -->
@@ -555,7 +554,7 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
   };
   window.pywebview = { api: {
     get_state: async () => ({ text: "", title: "", path: "", folder: null }),
-    help_doc: async () => ({ text: "# 푸르름 (웹)\n\n**열기** 버튼으로 `.qmd`/`.md` 파일을 엽니다. 편집·수식·콜아웃·저장(⌘S)·이미지 붙여넣기·그림판 모두 동작합니다.\n\n::: {.callout-note}\n웹 버전에서 붙여넣거나 그린 이미지는 **문서 안에 직접 포함**됩니다 (별도 파일 없음 — 문서 하나로 자체 완결).\n:::", title: "도움말", path: "" }),
+    help_doc: async () => ({ text: "# Pururum (웹)\n\n**열기** 버튼으로 `.qmd`/`.md` 파일을 엽니다. 편집·수식·콜아웃·저장(⌘S)·이미지 붙여넣기·그림판 모두 동작합니다.\n\n::: {.callout-note}\n웹 버전에서 붙여넣거나 그린 이미지는 **문서 안에 직접 포함**됩니다 (별도 파일 없음 — 문서 하나로 자체 완결).\n:::", title: "도움말", path: "" }),
     read_path: async (path) => {
       const h = fileHandles.get(path);
       if (h) return stateOf(path, h);
@@ -1519,7 +1518,7 @@ document.getElementById("btn-open").onclick = doOpen;
 document.getElementById("btn-save").onclick = doSave;
 document.getElementById("btn-pdf").onclick = doPdf;
 async function doHelp() {
-  const existing = tabs.find((t) => t.title === "푸르름 도움말");
+  const existing = tabs.find((t) => t.title === "Pururum 도움말");
   if (existing) { switchTo(existing.id); return; }
   try { addTab(await api().help_doc()); } catch (_) {}
 }

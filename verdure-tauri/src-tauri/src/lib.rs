@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
-const WELCOME: &str = "---\ntitle: \"푸르름\"\nauthor: \"환영합니다 👋\"\n---\n\n## 사용법\n\n- **열기…**(⌘O)로 `.qmd` / `.md` 파일을 엽니다.\n- 왼쪽 **에디터**에서 편집하면 미리보기가 **즉시** 갱신됩니다.\n- **⌘S** 로 저장, **출력** 버튼으로 PDF로 내보냅니다.\n\n인라인 수식 $e^{i\\pi}+1=0$ 과 블록 수식, 표, 콜아웃, 탭셋을 지원합니다.\n";
+const WELCOME: &str = "---\ntitle: \"Pururum\"\nauthor: \"환영합니다 👋\"\n---\n\n## 사용법\n\n- **열기…**(⌘O)로 `.qmd` / `.md` 파일을 엽니다.\n- 왼쪽 **에디터**에서 편집하면 미리보기가 **즉시** 갱신됩니다.\n- **⌘S** 로 저장, **출력** 버튼으로 PDF로 내보냅니다.\n\n인라인 수식 $e^{i\\pi}+1=0$ 과 블록 수식, 표, 콜아웃, 탭셋을 지원합니다.\n";
 
 #[derive(Default)]
 struct AppState {
@@ -69,7 +69,7 @@ fn read_path(state: State<SharedState>, path: String) -> Value {
 
 #[tauri::command]
 fn help_doc() -> Value {
-    json!({ "text": WELCOME, "title": "푸르름 도움말", "path": "" })
+    json!({ "text": WELCOME, "title": "Pururum 도움말", "path": "" })
 }
 
 #[tauri::command]
