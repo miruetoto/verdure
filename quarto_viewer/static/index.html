@@ -1511,11 +1511,7 @@ function flashAutosaved() {
 }
 async function doAutosave(expectedTabId = activeId) {
   const t = activeTab(); if (!t) return;
-  if (isWebMode()) {
-    // Web: no silent file writes — snapshot into the recent-docs shelf instead.
-    if (t.id === expectedTabId && isDirty(t)) recentSaveDoc(titleHint(ed.getValue()) || t.title, ed.getValue());
-    return;
-  }
+  if (isWebMode()) return;  // web: no silent file writes (save = explicit ⌘S download)
   // The user may have switched tabs during the debounce. The backend's save
   // target is the active tab, so saving here would write the wrong document.
   if (t.id !== expectedTabId) return;
@@ -1704,54 +1700,21 @@ async function renderRoots() {
   }
   markActiveInTree();
 }
-/* ---- Web recent docs (localStorage) ------------------------------------ */
-const RECENT_KEY = "qv-recent-docs";
-function recentLoad() { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (_) { return []; } }
-function recentSaveDoc(title, text) {
-  if (!isWebMode()) return;
-  const list = recentLoad().filter((d) => d.title !== title || d.text !== text);
-  list.unshift({ title: title || "제목 없음", text, ts: Date.now() });
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 20))); } catch (_) {}
-  renderWebRecent();
-}
-// Web sidebar mirrors the mac layout — same 탐색기 empty state, but the
-// 폴더 열기 button is sealed (dimmed; clicking flashes the 맥 앱 toast),
-// and a 최근 문서 section stacks below it.
-function renderWebRecent() {
-  if (!isWebMode()) return;
+// Web sidebar mirrors the mac layout exactly — same 탐색기 empty state; the
+// 폴더 열기 button is just sealed (dimmed; clicking flashes the 맥 앱 toast).
+function renderWebSidebar() {
   const tree = document.getElementById("sidebar-tree");
   document.getElementById("sidebar-root").textContent = "탐색기";
   tree.innerHTML = "";
   const box = document.createElement("div"); box.className = "sidebar-empty";
-  box.style.padding = "24px 16px";
   box.appendChild(Object.assign(document.createElement("div"), { textContent: "열린 폴더가 없습니다" }));
   const btn = document.createElement("button");
   btn.textContent = "폴더 열기"; btn.className = "locked"; btn.onclick = doOpenFolder;
   box.appendChild(btn);
   tree.appendChild(box);
-  const head = document.createElement("div");
-  head.className = "side-sec-head"; head.textContent = "최근 문서";
-  tree.appendChild(head);
-  const list = recentLoad();
-  if (!list.length) {
-    const empty = document.createElement("div");
-    empty.style.cssText = "padding:6px 12px 6px 24px;color:var(--muted);font:12px/1.5 -apple-system,sans-serif";
-    empty.textContent = "최근 문서가 여기 쌓입니다.";
-    tree.appendChild(empty);
-    return;
-  }
-  for (const d of list) {
-    const el = document.createElement("div");
-    el.className = "side-tab";
-    el.title = new Date(d.ts).toLocaleString();
-    const nm = document.createElement("span"); nm.className = "st-name"; nm.textContent = d.title;
-    el.appendChild(nm);
-    el.onmousedown = () => addTab({ text: d.text, title: d.title, path: "" });
-    tree.appendChild(el);
-  }
 }
 function renderEmptySidebar() {
-  if (isWebMode()) { renderWebRecent(); return; }
+  if (isWebMode()) { renderWebSidebar(); return; }
   const tree = document.getElementById("sidebar-tree");
   tree.innerHTML = "";
   const box = document.createElement("div"); box.className = "sidebar-empty";
