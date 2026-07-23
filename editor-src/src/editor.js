@@ -33,6 +33,7 @@ let HOST = {
   ctxClear: () => {},
   editTable: null,   // host-provided spreadsheet modal (src, replace) — see index.html
   editTabset: null,  // host-provided tabset popup editor
+  editImage: null,   // host-provided image popup editor (align/size/delete)
   settleCaret: null, // host-provided caret settling across modal focus handoffs
 };
 
@@ -62,6 +63,33 @@ function applyImageAttr(view, dom, patch) {
   } catch (_) { /* widget detached mid-drag */ }
 }
 
+// Doc-range ops for a single image token (![alt](src){attrs}), located from the
+// widget's live DOM position: patch its {width/align} attrs, or delete the whole
+// token. Mirrors the table/tabset "find exact src, rewrite once" pattern.
+function imageDocOps(view, dom) {
+  let used = false;
+  const findTok = () => {
+    const pos = view.posAtDOM(dom);
+    const line = view.state.doc.lineAt(pos);
+    const text = view.state.doc.sliceString(pos, line.to);
+    const m = /^!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?/.exec(text);
+    return m ? { pos, len: m[0].length } : null;
+  };
+  return {
+    apply: (patch) => { applyImageAttr(view, dom, patch); },
+    remove: () => {
+      if (used || !dom.isConnected) return;
+      const t = findTok(); if (!t) return; used = true;
+      const doc = view.state.doc;
+      let to = t.pos + t.len;
+      // Swallow a lone trailing newline so a block image leaves no empty gap.
+      if (doc.sliceString(to, to + 1) === "\n") to += 1;
+      view.dispatch({ changes: { from: t.pos, to, insert: "" }, selection: { anchor: t.pos } });
+      if (HOST.settleCaret) HOST.settleCaret(t.pos);
+    },
+  };
+}
+
 class ImageWidget extends WidgetType {
   constructor(src, alt, width, align) {
     super(); this.src = src; this.alt = alt; this.width = width || null; this.align = align || null;
@@ -74,7 +102,7 @@ class ImageWidget extends WidgetType {
     // an inner box's children on failure.
     const wrap = document.createElement("span");
     wrap.className = "qv-imgwrap" + (this.align ? " qv-align-" + this.align : "");
-    const box = document.createElement("span");      // relative anchor for grip/toolbar
+    const box = document.createElement("span");
     box.className = "qv-imgbox";
     wrap.appendChild(box);
     const img = document.createElement("img");
@@ -86,54 +114,19 @@ class ImageWidget extends WidgetType {
     if (/^(https?:|data:)/.test(this.src)) img.src = this.src;
     else HOST.resolveAsset(this.src).then((uri) => { if (uri) img.src = uri; else fail(); }).catch(fail);
     img.addEventListener("error", fail);
-    // Clicking selects the image: its controls stay pinned (visible regardless
-    // of hover) until a click lands anywhere outside the image.
+    // Like tables/tabsets: clicking the image opens the host's popup editor
+    // (align / size / delete). A modal never fights CodeMirror for focus, so no
+    // more hide-and-seek toolbar. Also drop the caret after the widget so a
+    // plain Backspace deletes it too.
     wrap.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      wrap.classList.add("qv-selected");
-      dockCtx(bar, "이미지", bar);            // controls dock in the fixed slot
-      const off = (ev) => {
-        if (wrap.contains(ev.target)) return;
-        wrap.classList.remove("qv-selected");
-        undockCtx(bar);
-        document.removeEventListener("mousedown", off, true);
-      };
-      document.addEventListener("mousedown", off, true);
-      placeCursor(view, wrap);
-    });
-    // Drag the corner grip to resize: live via style.width, then persisted as a
-    // Quarto {width=N} attribute so real `quarto render` honors it too.
-    const grip = document.createElement("span");
-    grip.className = "qv-img-grip";
-    grip.title = "드래그해서 크기 조절";
-    box.appendChild(grip);
-    grip.addEventListener("mousedown", (e) => {
       e.preventDefault(); e.stopPropagation();
-      const startX = e.clientX, startW = img.getBoundingClientRect().width;
-      const move = (ev) => { img.style.width = Math.max(40, Math.round(startW + ev.clientX - startX)) + "px"; };
-      const up = () => {
-        document.removeEventListener("mousemove", move);
-        document.removeEventListener("mouseup", up);
-        applyImageAttr(view, wrap, { width: Math.round(img.getBoundingClientRect().width) });
-      };
-      document.addEventListener("mousemove", move);
-      document.addEventListener("mouseup", up);
+      placeCursor(view, wrap);
+      if (!HOST.editImage) return;
+      const ops = imageDocOps(view, wrap);
+      HOST.editImage(
+        { src: this.src, alt: this.alt, width: this.width, align: this.align, preview: img.currentSrc || img.src },
+        ops.apply, ops.remove);
     });
-    // Hover toolbar: left / center / right alignment → fig-align attribute.
-    // Clicking the active one clears the alignment.
-    const bar = document.createElement("span");
-    bar.className = "qv-img-alignbar";
-    for (const [key, glyph, tip] of [["left", "⇤", "왼쪽 정렬"], ["center", "↔", "가운데 정렬"], ["right", "⇥", "오른쪽 정렬"]]) {
-      const b = document.createElement("button");
-      b.type = "button"; b.textContent = glyph; b.title = tip;
-      if (this.align === key) b.className = "on";
-      b.addEventListener("mousedown", (e) => {
-        e.preventDefault(); e.stopPropagation();
-        applyImageAttr(view, wrap, { align: this.align === key ? null : key });
-      });
-      bar.appendChild(b);
-    }
-    // (docked into the app's context slot on selection — never floats here)
     return wrap;
   }
   ignoreEvent() { return true; }
@@ -420,8 +413,13 @@ class BlockWidget extends WidgetType {
 // Place the selection at a widget's document position, revealing its source.
 function placeCursor(view, el) {
   try {
-    const pos = view.posAtDOM(el);
-    view.dispatch({ selection: { anchor: pos } });
+    const from = view.posAtDOM(el);
+    // Land the caret just AFTER the atomic widget, not before it, so a plain
+    // Backspace right after a click removes the object the user just clicked.
+    let anchor = from;
+    const v = view.state.field(livePreview, false);
+    if (v) v.atomic.between(from, from + 1, (f, t) => { if (f === from && t > anchor) anchor = t; });
+    view.dispatch({ selection: { anchor } });
     view.focus();
   } catch (_) { /* widget may be detached mid-update */ }
 }
@@ -950,6 +948,7 @@ function create(parent, opts = {}) {
     ctxClear: opts.ctxClear || HOST.ctxClear,
     editTable: opts.editTable || HOST.editTable,
     editTabset: opts.editTabset || HOST.editTabset,
+    editImage: opts.editImage || HOST.editImage,
     settleCaret: opts.settleCaret || HOST.settleCaret,
     resolveImages: opts.resolveImages || HOST.resolveImages,
   };
@@ -993,7 +992,31 @@ function create(parent, opts = {}) {
     const line = v.state.doc.lineAt(v.state.selection.main.head);
     return jumpTo(v, toEnd ? line.to : line.from, extend);
   };
+  // Backspace/Delete over a fixed object (image, table, tabset, math, hr):
+  // when the caret sits right after (Backspace) or right before (Delete) an
+  // atomic widget, remove the whole object in one stroke — "click it, delete
+  // it." Returns false when no object is adjacent, so normal editing is intact.
+  const deleteAtomicAt = (view, forward) => {
+    const sel = view.state.selection.main;
+    if (!sel.empty) return false;
+    const v = view.state.field(livePreview, false);
+    if (!v) return false;
+    const p = sel.from, doc = view.state.doc;
+    let target = null;
+    v.atomic.between(Math.max(0, p - 1), Math.min(doc.length, p + 1), (f, t) => {
+      if (forward ? f === p : t === p) target = { from: f, to: t };
+    });
+    if (!target) return false;
+    let { from, to } = target;
+    // Swallow one adjacent blank line so a block object leaves no empty gap.
+    if (doc.sliceString(to, to + 1) === "\n" && doc.sliceString(to + 1, to + 2) === "\n") to += 1;
+    else if (from > 0 && doc.sliceString(from - 1, from) === "\n" && doc.sliceString(from - 2, from - 1) === "\n") from -= 1;
+    view.dispatch({ changes: { from, to, insert: "" }, selection: { anchor: from } });
+    return true;
+  };
   const arrowKeys = [
+    { key: "Backspace", run: (v) => deleteAtomicAt(v, false) },
+    { key: "Delete", run: (v) => deleteAtomicAt(v, true) },
     { key: "ArrowDown", run: (v) => moveByLine(v, true) },
     { key: "ArrowUp", run: (v) => moveByLine(v, false) },
     { key: "Mod-ArrowLeft", run: (v) => lineEdge(v, false, false), shift: (v) => lineEdge(v, false, true) },

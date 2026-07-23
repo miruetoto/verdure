@@ -42,6 +42,14 @@
   .tbtn.on { background: var(--accent); color: #fff; }
   .tbtn:active { transform: translateY(.5px); }
   .tbtn svg { width: 17px; height: 17px; }
+  /* Source-mode is a dedicated round toggle: always a visible ring, fills coral
+     with a glow when engaged, so its on/off state reads at a glance. */
+  #btn-source { border-radius: 50%; border-color: var(--border-strong); color: var(--body); }
+  #btn-source:hover { border-color: var(--accent); }
+  #btn-source.on {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
   /* tooltip */
   .tbtn::after {
     content: attr(data-tip); position: absolute; top: 38px; left: 50%;
@@ -236,6 +244,29 @@
   .tbl-tools, .tbl-foot { display: flex; align-items: center; gap: 6px; }
   .tbl-center { font: 500 12.5px/1 -apple-system, system-ui, sans-serif; color: var(--fg); display: inline-flex; align-items: center; gap: 5px; }
   .tbl-hint { font: 400 11px/1.3 -apple-system, system-ui, sans-serif; color: var(--muted); }
+  /* image editor popup */
+  .img-panel { width: min(92vw, 460px); }
+  .img-preview {
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg); border: 1px solid var(--border-strong); border-radius: 10px;
+    padding: 10px; min-height: 120px; max-height: 46vh; overflow: hidden;
+  }
+  .img-preview img { max-width: 100%; max-height: 42vh; object-fit: contain; border-radius: 3px; }
+  .img-row { display: flex; align-items: center; gap: 10px; }
+  .img-label {
+    font: 600 12.5px/1 -apple-system, system-ui, sans-serif; color: var(--muted);
+    width: 2.6em; flex: none;
+  }
+  .img-aligns { display: inline-flex; gap: 4px; }
+  .img-aligns button {
+    width: 34px; height: 30px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border-strong); background: var(--bg); color: var(--fg);
+    font-size: 15px; line-height: 1; transition: background .12s, color .12s, border-color .12s;
+  }
+  .img-aligns button:hover { background: var(--hover); }
+  .img-aligns button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #img-width { flex: 1; accent-color: var(--accent); }
+  .img-wval { font: 600 12.5px/1 var(--mono, monospace); color: var(--fg); width: 3.4em; text-align: right; }
   .tbl-grid { overflow: auto; flex: 1; min-height: 0; }
   .tbl-grid table { border-collapse: collapse; }
   .tbl-grid td { border: 1px solid var(--border-strong); padding: 0; background: var(--bg); }
@@ -487,6 +518,34 @@
         <span class="spacer"></span>
         <button id="tbl-cancel" class="dtool">취소</button>
         <button id="tbl-apply" class="dtool primary">적용</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Image editor: alignment / size / delete in a popup (like the table one). -->
+  <div id="image-modal" class="overlay" hidden>
+    <div class="tbl-panel img-panel">
+      <div class="img-preview"><img id="img-prev" alt=""></div>
+      <div class="img-row">
+        <span class="img-label">정렬</span>
+        <div class="img-aligns" id="img-aligns">
+          <button type="button" data-al="left" title="왼쪽 정렬">⇤</button>
+          <button type="button" data-al="center" title="가운데 정렬">↔</button>
+          <button type="button" data-al="right" title="오른쪽 정렬">⇥</button>
+          <button type="button" data-al="" title="기본(정렬 없음)">—</button>
+        </div>
+      </div>
+      <div class="img-row">
+        <span class="img-label">크기</span>
+        <input type="range" id="img-width" min="20" max="100" step="5" value="100">
+        <span id="img-width-val" class="img-wval">100%</span>
+        <button type="button" id="img-width-reset" class="dtool">원본</button>
+      </div>
+      <div class="tbl-foot">
+        <button id="img-delete" class="dtool danger">이미지 삭제</button>
+        <span class="spacer"></span>
+        <button id="img-cancel" class="dtool">취소</button>
+        <button id="img-apply" class="dtool primary">적용</button>
       </div>
     </div>
   </div>
@@ -1506,6 +1565,62 @@ document.addEventListener("keydown", (e) => {
     else { document.getElementById("tbl-addrow").click(); }
   }
 });
+
+/* ============ Image editor (popup) ============ */
+const imageModal = document.getElementById("image-modal");
+let imgState = null;   // { onApply, onDelete, align, width }
+function openImageEditor(info, onApply, onDelete) {
+  imgState = { onApply, onDelete, align: info.align || "", width: info.width || null };
+  const prev = document.getElementById("img-prev");
+  prev.src = info.preview || ""; prev.alt = info.alt || "";
+  document.querySelectorAll("#img-aligns button").forEach((b) =>
+    b.classList.toggle("on", (b.dataset.al || "") === (info.align || "")));
+  const wpct = /^(\d+)%$/.exec(info.width || "");
+  const slider = document.getElementById("img-width");
+  slider.value = wpct ? +wpct[1] : 100;
+  document.getElementById("img-width-val").textContent =
+    info.width ? (wpct ? wpct[1] + "%" : info.width) : "원본";
+  document.getElementById("img-delete").hidden = !onDelete;
+  imageModal.removeAttribute("hidden");
+}
+function closeImageEditor() { imageModal.setAttribute("hidden", ""); imgState = null; if (ed) ed.focus(); }
+document.querySelectorAll("#img-aligns button").forEach((b) => {
+  b.onclick = () => {
+    if (!imgState) return;
+    imgState.align = b.dataset.al || "";
+    document.querySelectorAll("#img-aligns button").forEach((x) => x.classList.toggle("on", x === b));
+  };
+});
+document.getElementById("img-width").oninput = (e) => {
+  if (!imgState) return;
+  const p = +e.target.value;
+  imgState.width = p + "%";
+  document.getElementById("img-width-val").textContent = p + "%";
+};
+document.getElementById("img-width-reset").onclick = () => {
+  if (!imgState) return;
+  imgState.width = null;
+  document.getElementById("img-width").value = 100;
+  document.getElementById("img-width-val").textContent = "원본";
+};
+document.getElementById("img-cancel").onclick = closeImageEditor;
+document.getElementById("img-apply").onclick = () => {
+  if (!imgState) return;
+  const patch = { align: imgState.align || null, width: imgState.width || null };
+  const done = imgState.onApply; closeImageEditor(); if (done) done(patch);
+};
+document.getElementById("img-delete").onclick = () => {
+  if (!imgState) return;
+  const done = imgState.onDelete; closeImageEditor(); if (done) done();
+};
+imageModal.addEventListener("mousedown", (e) => { if (e.target === imageModal) closeImageEditor(); });
+document.addEventListener("keydown", (e) => {
+  if (!imageModal.hasAttribute("hidden") && e.key === "Escape") { e.preventDefault(); closeImageEditor(); }
+});
+// Called by the editor when an image widget is clicked.
+function editImageFromWidget(info, apply, remove) {
+  openImageEditor(info, (patch) => apply(patch), remove ? () => remove() : null);
+}
 // After a modal closes, focus hands back to the editor and WKWebView may drag
 // the (browser) selection to a stale spot — CM then maps it to the widget's
 // right edge. Settle the caret: assert now, after the handoff timers, and once
@@ -1527,21 +1642,7 @@ function editTableFromWidget(pipeText, centered, replace, remove) {
 // Creating a new table (삽입 → 표).
 function newTableViaEditor() {
   openTableEditor({ header: ["열 1", "열 2"], aligns: [null, null], rows: [["", ""]] }, false, (text, center) => {
-    const view = ed.view;
-    const sel = view.state.selection.main;
-    const line = view.state.doc.lineAt(sel.from);
-    const before = view.state.doc.sliceString(line.from, sel.from);
-    const lead = before.trim() === "" ? "" : "\n\n";
-    const body = center ? "::: {.center}\n" + text + "\n:::" : text;
-    const insert = lead + body + "\n";
-    const anchor = sel.from + insert.length;
-    view.dispatch({
-      changes: { from: sel.from, to: sel.to, insert },
-      selection: { anchor },
-      scrollIntoView: true,
-    });
-    view.focus();
-    settleCaret(anchor);
+    insertBlock(center ? "::: {.center}\n" + text + "\n:::" : text);
   });
 }
 
@@ -1612,18 +1713,8 @@ function editTabsetFromWidget(src, replace, remove) {
 }
 // Creating a new tabset (삽입 → 탭셋).
 function newTabsetViaEditor() {
-  openTabsetEditor({ level: 2, tabs: [{ title: "탭 1", body: "" }, { title: "탭 2", body: "" }] }, (text) => {
-    const view = ed.view;
-    const sel = view.state.selection.main;
-    const line = view.state.doc.lineAt(sel.from);
-    const before = view.state.doc.sliceString(line.from, sel.from);
-    const lead = before.trim() === "" ? "" : "\n\n";
-    const insert = lead + text + "\n";
-    const anchor = sel.from + insert.length;
-    view.dispatch({ changes: { from: sel.from, to: sel.to, insert }, selection: { anchor }, scrollIntoView: true });
-    view.focus();
-    settleCaret(anchor);
-  }, null);
+  openTabsetEditor({ level: 2, tabs: [{ title: "탭 1", body: "" }, { title: "탭 2", body: "" }] },
+    (text) => insertBlock(text), null);
 }
 
 /* ============ Sidebar resize (drag the divider; snap-collapse) ============ */
@@ -1668,10 +1759,54 @@ document.getElementById("btn-new").onclick = doNew;
 document.getElementById("btn-open").onclick = doOpen;
 document.getElementById("btn-save").onclick = doSave;
 document.getElementById("btn-pdf").onclick = doPdf;
+// Rich help — one source of truth for web and desktop. Written in the very
+// syntax it documents, so it doubles as a live demo when rendered.
+const HELP_MD = [
+  '---', 'title: "Pururum 도움말"', '---', '',
+  '# Pururum 도움말', '',
+  'Markdown / Quarto 문서를 쓰면서 결과를 **바로** 보는 에디터입니다. 표·그림·수식·콜아웃·탭셋을 팝업으로 편집합니다.', '',
+  '## 파일', '',
+  '| 동작 | 단축키 | 설명 |',
+  '| --- | :---: | --- |',
+  '| 열기 | ⌘O | `.qmd` / `.md` 파일 열기 |',
+  '| 저장 | ⌘S | 현재 문서 저장 |',
+  '| 새 문서 | ⌘N | 빈 문서 만들기 |',
+  '| 출력(PDF) | ⌘P | 스타일 그대로 PDF로 내보내기 |', '',
+  '::: {.callout-note}',
+  '제목 없는 새 문서에 그림·이미지를 넣으면 자동으로 `~/Documents/Verdure` 폴더에 저장되어 아무것도 잃지 않습니다.',
+  ':::', '',
+  '## 편집 모드', '',
+  '오른쪽 위 **동그란 `<>` 버튼**(또는 **⌘/**)으로 **위지윅 ↔ 소스**를 전환합니다. 소스 모드에서는 원문 마크다운을 그대로 봅니다.', '',
+  '## 오브젝트 — 표 · 그림 · 탭셋', '',
+  '- 문서 안의 표·그림·탭셋을 **클릭**하면 팝업 편집기가 열립니다.',
+  '- 팝업에서 **정렬 · 크기 · 삭제**를 할 수 있습니다.',
+  '- 오브젝트를 클릭한 뒤 **Backspace**(또는 Delete)로도 한 번에 지웁니다.',
+  '- 표·그림은 위아래로 **빈 줄**을 두어 서로 붙지 않게 삽입됩니다 (렌더 오류 방지).', '',
+  '::: {.callout-tip}',
+  '표는 스프레드시트처럼, 그림은 미리보기와 함께, 탭셋은 탭 목록으로 편집합니다.',
+  ':::', '',
+  '## 이미지 & 그림판', '',
+  '- **⌘V**로 스크린샷·이미지를 붙여넣으면 문서 옆 `attachments/`에 저장됩니다.',
+  '- **삽입 → 그림판**에서 직접 그려 넣습니다 (낙서).',
+  '- 그림을 클릭해 **크기(%)·정렬·삭제**를 조절합니다.', '',
+  '## 수식', '',
+  '인라인은 `$...$`, 블록은 `$$...$$`. 예: 인라인 $e^{i\\pi}+1=0$, 블록:', '',
+  '$$\\int_0^1 x^2\\,dx = \\frac{1}{3}$$', '',
+  '## 콜아웃 & 탭셋', '',
+  '::: {.panel-tabset}',
+  '## Python', '파이썬 예시 탭입니다.', '',
+  '## R', 'R 예시 탭입니다.',
+  ':::', '',
+  '## 표 예시', '',
+  '| 이름 | 값 |',
+  '| --- | ---: |',
+  '| 원주율 | 3.14 |',
+  '| 자연로그의 밑 | 2.72 |', '',
+].join("\n");
 async function doHelp() {
   const existing = tabs.find((t) => t.title === "Pururum 도움말");
   if (existing) { switchTo(existing.id); return; }
-  try { addTab(await api().help_doc()); } catch (_) {}
+  addTab({ text: HELP_MD, title: "Pururum 도움말", path: "" });
 }
 document.getElementById("btn-help").onclick = doHelp;
 // Whole-document source (raw markdown) toggle — top-right toolbar button.
@@ -1768,15 +1903,24 @@ function openDrawModal() {
 }
 function closeDrawModal() { drawModal.setAttribute("hidden", ""); if (ed) ed.focus(); }
 
-function insertImageMarkdown(path) {
-  const view = ed.view; const sel = view.state.selection.main;
-  const line = view.state.doc.lineAt(sel.from);
-  const before = view.state.doc.sliceString(line.from, sel.from);
-  const lead = before.trim() === "" ? "" : "\n\n";
-  const text = lead + "![](" + path + ")\n";
-  view.dispatch({ changes: { from: sel.from, to: sel.to, insert: text }, selection: { anchor: sel.from + text.length }, scrollIntoView: true });
+// Insert a block (image, table) isolated by a blank line above and below, so
+// pandoc always parses it standalone. Adjacent images/tables with no blank line
+// between them merge or break — this guarantees they never touch. Caret lands on
+// the blank line beneath the block.
+function insertBlock(blockText) {
+  const view = ed.view; const sel = view.state.selection.main; const doc = view.state.doc;
+  const line = doc.lineAt(sel.from);
+  const before = doc.sliceString(line.from, sel.from);
+  const prevBlank = line.from === 0 || doc.lineAt(line.from - 1).text.trim() === "";
+  let lead = "";
+  if (before.trim() !== "") lead = "\n\n";        // split off content on this line
+  else if (!prevBlank) lead = "\n";               // caret at line start under content
+  const text = lead + blockText + "\n\n";
+  const anchor = sel.from + lead.length + blockText.length + 1;  // the blank line below
+  view.dispatch({ changes: { from: sel.from, to: sel.to, insert: text }, selection: { anchor }, scrollIntoView: true });
   view.focus();
 }
+function insertImageMarkdown(path) { insertBlock("![](" + path + ")"); }
 // Crop to the drawn area (trim empty margins) but keep the drawing at the size
 // it was drawn — big doodles stay big, small ones stay small.
 function croppedDrawingDataUrl() {
@@ -1901,6 +2045,7 @@ window.addEventListener("pywebviewready", async () => {
     },
     editTable: editTableFromWidget,
     editTabset: editTabsetFromWidget,
+    editImage: editImageFromWidget,
     settleCaret,
   });
   // ⌘V로 스크린샷/이미지 붙여넣기: 클립보드에 이미지가 있으면 활성 문서 옆
@@ -1914,7 +2059,7 @@ window.addEventListener("pywebviewready", async () => {
         r = await api().paste_image();
       }
       if (r && r.path) {
-        ed.view.dispatch(ed.view.state.replaceSelection("![](" + r.path + ")"));
+        insertImageMarkdown(r.path);
         flash("이미지 저장됨 — " + describePath(r.path));
       } else if (r && r.error) {
         flash(r.error);
