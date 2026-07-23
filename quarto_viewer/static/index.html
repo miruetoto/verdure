@@ -97,19 +97,11 @@
   #reload-btn.show { display: inline-flex; }
 
   /* ---- tab strip ---- */
-  /* Tabs are absolutely pinned to start exactly at the PAPER's left edge
-     (sidebar + 1px divider + 20px desk gutter), independent of the toolbar
-     buttons' width. One rule for mac and web — the web grew the same sidebar,
-     so its old "no sidebar → flex flow" fallback is gone. */
-  #tabs {
-    position: absolute; left: calc(var(--sidebar-w, 260px) + 21px); right: 84px;
-    top: 6px; bottom: 0; display: flex; align-items: center; gap: 4px;
-    overflow-x: auto; overflow-y: hidden; padding: 0 2px; scrollbar-width: none;
-  }
-  /* Sidebar hidden → the paper starts at the window edge's 20px gutter. */
-  html.qv-sb-hidden #tabs { left: 20px; }
-  /* Web hides the 3px resizer strip, shifting the paper 3px left of the mac's. */
-  html.qv-web #tabs { left: calc(var(--sidebar-w, 260px) + 18px); }
+  /* Retired: the sidebar's 열린 문서 list does everything the horizontal
+     pills did (switch, close, dirty dot), so the strip was pure duplication.
+     renderTabs() still maintains the hidden element — flip this to bring the
+     pills back. */
+  #tabs { display: none; }
   #tabs::-webkit-scrollbar { display: none; }
   /* Tabs are floating pills, vertically centered in the toolbar. (The previous
      browser-style "open bottom" tab never actually reached the toolbar's bottom
