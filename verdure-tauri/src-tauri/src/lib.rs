@@ -433,6 +433,18 @@ fn open_export(app: AppHandle, html: String) -> Value {
     json!({ "opened": true })
 }
 
+// Native print: WKWebView ignores JS window.print(), so trigger the platform
+// print panel from Rust. The page's @media print CSS reveals only the rendered
+// document (#export-doc), so the PDF matches the app exactly — no separate
+// export HTML to keep in sync.
+#[tauri::command]
+fn print_page(window: tauri::WebviewWindow) -> Value {
+    match window.print() {
+        Ok(_) => json!({ "ok": true }),
+        Err(e) => json!({ "error": e.to_string() }),
+    }
+}
+
 // Route a launch argv (file / --folder DIR / --new-blank) to the running window.
 fn route_args(app: &AppHandle, args: &[String]) {
     let mut folder: Option<String> = None;
@@ -509,7 +521,8 @@ pub fn run() {
             save_drawing,
             paste_image,
             open_url,
-            open_export
+            open_export,
+            print_page
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

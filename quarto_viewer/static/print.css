@@ -1,16 +1,20 @@
-/* Print / PDF-export layout. Loaded only by the exported standalone page. */
+/* App print stylesheet — loaded with media="print", so these rules apply only
+   while printing (in the app's WKWebView or a browser). We print straight from
+   the webview: hide the whole app and show only the staged rendered document
+   (#export-doc), so the PDF is exactly what the app displays. */
 @page { margin: 18mm 16mm; }
 
-html, body { background: var(--bg); margin: 0; padding: 0; }
-body { font-family: var(--serif); color: var(--body); padding: 0 24px; }
+/* Hide everything except the rendered document. */
+body > *:not(#export-doc) { display: none !important; }
 
-.doc-print {
-  max-width: 720px; margin: 0 auto; padding: 48px 0 64px;
+#export-doc {
+  position: static !important; left: auto !important; top: auto !important;
+  width: auto !important; display: block !important;
+  max-width: 720px; margin: 0 auto; padding: 0;
   font-size: 11.5pt; line-height: 1.7;
 }
 
-/* Tabs can't be clicked on paper — the exporter flattens them into titled
-   sections, but keep any raw tabset readable too. */
+/* Tabsets are flattened into titled sections by doPdf before printing. */
 .tab-bar { display: none; }
 .tab-panel { display: block !important; }
 .tab-section-title {
@@ -18,6 +22,9 @@ body { font-family: var(--serif); color: var(--body); padding: 0 24px; }
   font-size: 1.2em; margin: 1.2em 0 .4em;
 }
 
+/* Object-editing affordances must never show on paper. */
+.qv-delx, .qv-img-grip { display: none !important; }
+
 /* Avoid awkward page breaks inside atomic blocks. */
-.callout, pre, table, img, blockquote, .tabset, mjx-container { break-inside: avoid; }
+.callout, pre, table, img, figure, blockquote, .tabset, mjx-container { break-inside: avoid; }
 h1, h2, h3, h4 { break-after: avoid; }

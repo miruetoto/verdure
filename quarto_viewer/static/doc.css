@@ -9,8 +9,9 @@
    에셋 프로토콜로 폰트 바이너리가 로드 안 되던 문제를 회피. */
 
 :root {
-  /* Blog-exact serif: NanumMyeongjo for Hangul and Latin alike. */
-  --serif: 'NanumMyeongjo', 'Nanum Myeongjo', serif;
+  /* Latin/numbers/symbols → Noto Serif; Hangul → 나눔명조 (Noto Serif has no
+     Hangul glyphs, so Korean falls through by the font stack). */
+  --serif: 'Noto Serif', 'NanumMyeongjo', 'Nanum Myeongjo', serif;
   --mono: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --bg: #fcfcf7;            /* body background */
   --body: #555555;          /* base text */

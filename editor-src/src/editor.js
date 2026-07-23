@@ -875,7 +875,7 @@ const MONO = "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Couri
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "#fcfcf7", color: "#555" },
   ".cm-scroller": {
-    fontFamily: "'NanumMyeongjo','Nanum Myeongjo',serif",
+    fontFamily: "'Noto Serif','NanumMyeongjo','Nanum Myeongjo',serif",
     fontSize: "16px", lineHeight: "1.5", overflow: "auto",
   },
   ".cm-content": { padding: "44px 8px 200px", maxWidth: "820px", margin: "0 auto", caretColor: "#ff6f61" },

@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="fonts.css" />
 <link rel="stylesheet" href="vendor/github.min.css" />
 <link rel="stylesheet" href="doc.css" />
+<link rel="stylesheet" href="print.css" media="print" />
 <style>
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -83,7 +84,12 @@
     top: 6px; bottom: 0; display: flex; align-items: center; gap: 4px;
     overflow-x: auto; overflow-y: hidden; padding: 0 2px; scrollbar-width: none;
   }
-  html.qv-web #tabs { left: 10px; }   /* no sidebar → start at the toolbar */
+  /* Web has no sidebar, so the desktop's absolute "align tabs to the sidebar
+     edge" layout would overlap the toolbar icons. Fall back to plain flex flow:
+     [icons] [tabs] [right controls] — same icon set/order as the app. */
+  html.qv-web header { display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; }
+  html.qv-web #tb-left, html.qv-web #tabs, html.qv-web #hdr-right { position: static; left: auto; right: auto; top: auto; bottom: auto; }
+  html.qv-web #tabs { flex: 1; min-width: 0; }
   #tabs::-webkit-scrollbar { display: none; }
   /* Tabs are floating pills, vertically centered in the toolbar. (The previous
      browser-style "open bottom" tab never actually reached the toolbar's bottom
@@ -583,6 +589,10 @@
           <canvas id="img-canvas"></canvas>
         </div>
       </div>
+      <div class="img-row">
+        <span class="img-label">캡션</span>
+        <input type="text" id="img-caption" class="co-title" placeholder="그림 아래 표시될 설명 (비우면 없음)" autocomplete="off" style="flex:1">
+      </div>
       <div class="draw-tools img-tools">
         <span class="img-label">낙서</span>
         <div class="draw-colors" id="img-colors">
@@ -611,10 +621,6 @@
         </div>
         <span class="spacer"></span>
         <span class="tbl-hint">크기는 그림 모서리를 드래그해 조절하세요</span>
-      </div>
-      <div class="img-row">
-        <span class="img-label">캡션</span>
-        <input type="text" id="img-caption" class="co-title" placeholder="그림 아래 표시될 설명 (비우면 없음)" autocomplete="off" style="flex:1">
       </div>
       <div class="tbl-foot">
         <button id="img-delete" class="dtool danger">이미지 삭제</button>
@@ -682,6 +688,7 @@ if (window.__TAURI__) {
     save_drawing: (dataUrl) => invoke("save_drawing", { dataurl: dataUrl }),
     open_url: (url) => invoke("open_url", { url }),
     open_export: (html) => invoke("open_export", { html }),
+    print_page: () => invoke("print_page"),
   } };
   // Backend pushes opened files/folders from a second launch.
   listen("qv-open", (e) => window.QV && window.QV.openPath(e.payload));
@@ -853,6 +860,7 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
       w.document.close();
       return { opened: true };
     },
+    print_page: async () => { window.print(); return { ok: true }; },
   } };
   // Web mode has no folder access from a single-file open, so the explorer
   // sidebar would only ever show its empty state — hide it entirely.
@@ -1156,33 +1164,18 @@ function renderInto(container, text) {
   imagesReady = enhance(container);
   typeset(container);
 }
-// Replace every url(...font) in a CSS string with a base64 data URI so the
-// exported HTML is fully self-contained (relative font paths won't resolve from
-// a temp file). Only the fonts actually referenced (MathJax injects @font-face
-// solely for glyphs it used) are fetched, keeping the size bounded.
-async function inlineFontUrls(css) {
-  const urls = [...new Set([...css.matchAll(/url\((['"]?)([^'")]+\.(?:woff2|woff|ttf|otf))\1\)/g)].map((m) => m[2]))];
-  for (const u of urls) {
-    try {
-      const bytes = new Uint8Array(await (await fetch(u)).arrayBuffer());
-      let bin = ""; const CH = 0x8000;
-      for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
-      const ext = u.split(".").pop().toLowerCase();
-      const mime = ext === "ttf" ? "font/ttf" : ext === "otf" ? "font/otf" : ext === "woff2" ? "font/woff2" : "font/woff";
-      const dataUrl = "data:" + mime + ";base64," + btoa(bin);
-      for (const q of ["'", '"', ""]) css = css.split("url(" + q + u + q + ")").join("url(" + q + dataUrl + q + ")");
-    } catch (_) { /* leave the url as-is if the font can't be fetched */ }
-  }
-  return css;
-}
+// Print straight from the webview: render the document into #export-doc, then
+// trigger the native print panel. @media print reveals only #export-doc, so the
+// PDF is exactly what the app shows — same fonts, same MathJax render — with no
+// separate standalone HTML to keep in sync.
 async function doPdf() {
   renderInto(exportDoc, ed.getValue());
   await imagesReady;
   try {
     if (elementHasMath(exportDoc)) { await ensureMathJax(); if (MathJax.typesetPromise) await MathJax.typesetPromise([exportDoc]); }
   } catch (_) {}
-  const clone = exportDoc.cloneNode(true);
-  clone.querySelectorAll(".tabset").forEach((ts) => {
+  // Tabs can't be clicked on paper: flatten each tabset into titled sections.
+  exportDoc.querySelectorAll(".tabset").forEach((ts) => {
     const titles = [...ts.querySelectorAll(".tab-bar .tab-btn")].map((b) => b.textContent);
     const panels = [...ts.querySelectorAll(".tab-panel")];
     const frag = document.createDocumentFragment();
@@ -1195,39 +1188,14 @@ async function doPdf() {
   });
   const { fm } = splitFrontMatter(ed.getValue());
   const title = (fm && fm.title) || activeTitle || "document";
-  // CHTML math is styled by a stylesheet MathJax injects at runtime — the
-  // export page must carry a copy or every formula collapses. The glyph rules
-  // are added via CSSOM insertRule, which outerHTML/textContent do NOT
-  // reflect, so serialize the live cssRules instead. Absolute font URLs are
-  // rewritten back to relative so they resolve from the exported file.
-  let mjxCss = "";
-  for (const ss of document.styleSheets) {
-    const id = (ss.ownerNode && ss.ownerNode.id) || "";
-    if (!/^MJX/.test(id)) continue;
-    try { mjxCss += [...ss.cssRules].map((r) => r.cssText).join("\n"); } catch (_) {}
-  }
-  mjxCss = mjxCss.split(location.origin + "/").join("");
-  // Inline ALL stylesheets so the exported file is self-contained. The desktop
-  // app serves its assets from inside the binary (not a real path), so an
-  // external <link>/<base> can't resolve them in a separate browser — the page
-  // came out unstyled. Fonts are system fonts and images are already data URIs,
-  // so inlining the CSS makes the export fully standalone in any browser.
-  const cssText = async (u) => { try { return await (await fetch(u)).text(); } catch (_) { return ""; } };
-  const [fontsCss, ghCss, docCss, printCss] = await Promise.all([
-    cssText("fonts.css"), cssText("vendor/github.min.css"), cssText("doc.css"), cssText("print.css"),
-  ]);
-  // fonts.css already carries the body font as base64; inlineFontUrls handles the
-  // MathJax woff glyph fonts, so the standalone export renders identically to the
-  // app — math in real italic, Hangul in 나눔명조 — with no unresolved URLs.
-  const styleText = await inlineFontUrls(`${fontsCss}\n${ghCss}\n${docCss}\n${printCss}\n${mjxCss}`);
-  const html = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>`
-    + `<style>${styleText}</style></head>`
-    + `<body><article class="doc-print qdoc">${clone.innerHTML}</article></body></html>`;
-  try {
-    const r = await window.pywebview.api.open_export(html);
-    if (r && r.opened) flash("브라우저가 열렸습니다 · ⌘P → PDF로 저장");
-    else if (r && r.error) flash("내보내기 실패: " + r.error);
-  } catch (e) { flash("내보내기 실패: " + e); }
+  const prevTitle = document.title;
+  document.title = title;                     // becomes the PDF's default filename
+  document.documentElement.classList.add("qv-print");
+  const restore = () => { document.documentElement.classList.remove("qv-print"); document.title = prevTitle; };
+  window.addEventListener("afterprint", restore, { once: true });
+  setTimeout(restore, 60000);                 // safety net if afterprint never fires
+  try { await api().print_page(); }
+  catch (e) { restore(); flash("인쇄 실패: " + e); }
 }
 
 /* ============ Editor state & tabs ============ */
