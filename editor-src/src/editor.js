@@ -191,8 +191,9 @@ class DataUriToken extends WidgetType {
 }
 
 class MathWidget extends WidgetType {
-  constructor(tex, display) { super(); this.tex = tex; this.display = display; }
-  eq(o) { return o.tex === this.tex && o.display === this.display; }
+  // raw = the exact $$…$$ source (block math only) so the × badge can remove it.
+  constructor(tex, display, raw) { super(); this.tex = tex; this.display = display; this.raw = raw || ""; }
+  eq(o) { return o.tex === this.tex && o.display === this.display && o.raw === this.raw; }
   toDOM(view) {
     const el = document.createElement(this.display ? "div" : "span");
     // Same classes pandoc emits on the blog, so the blog's math CSS applies.
@@ -224,6 +225,9 @@ class MathWidget extends WidgetType {
       });
     }
     el.addEventListener("mousedown", (e) => { e.preventDefault(); placeCursor(view, el); });
+    // Block math: same hover outline + × as the other objects — but NO popup;
+    // clicking still reveals the $$…$$ source for in-place editing.
+    if (this.display && this.raw) addDeleteBadge(el, () => removeObjRange(view, el, this.raw));
     return el;
   }
   ignoreEvent() { return true; }
@@ -457,6 +461,12 @@ class BlockWidget extends WidgetType {
     // wrapped in an alignment div) gets in-place cell editing + the toolbar.
     if (el.querySelectorAll("table").length === 1 && /(^|\n)\s*\|/.test(this.src)) {
       enhanceTableWidget(el, view, this);
+    }
+    // Code blocks: hover outline + × like every object — no popup, clicking
+    // still reveals the fenced source for in-place editing.
+    else if (/^\s*(```|~~~)/.test(this.src)) {
+      el.classList.add("qv-hascode");
+      addDeleteBadge(el, () => removeObjRange(view, el, this.src));
     }
     el.addEventListener("mousedown", (e) => {
       // Tab switching inside a rendered tabset.
@@ -814,7 +824,7 @@ function buildDecorations(state) {
     const from = bm.index, to = from + bm[0].length;
     if (inReplaced(from, to) || inCode(from)) continue;
     mathRanges.push([from, to]);
-    if (!spanActive(from, to)) decos.push({ from, to, deco: Decoration.replace({ widget: new MathWidget(bm[1].trim(), true), block: bm[0].includes("\n") }) });
+    if (!spanActive(from, to)) decos.push({ from, to, deco: Decoration.replace({ widget: new MathWidget(bm[1].trim(), true, bm[0]), block: bm[0].includes("\n") }) });
   }
   const inMath = (from, to) => mathRanges.some((r) => from < r[1] && to > r[0]);
   const inlineRe = /(?<!\$)\$(?!\s)([^\$\n]+?)(?<!\s)\$(?!\$)/g;
@@ -1030,6 +1040,9 @@ const theme = EditorView.theme({
   ".qv-hastabset:hover .tabset": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "4px" },
   ".qv-hascallout:hover .callout": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "6px" },
   ".qv-hasfm:hover .frontmatter": { outline: "2px solid #ffd5ce", outlineOffset: "6px", borderRadius: "6px" },
+  // Code blocks and $$ block math: outline + × only (click edits in place).
+  ".qv-hascode:hover pre": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "6px" },
+  ".qv-math-block.qv-obj:hover mjx-container": { outline: "2px solid #ffd5ce", outlineOffset: "6px", borderRadius: "6px" },
   ".qv-hastable td, .qv-hastable th": { minWidth: "3.5em", height: "1.7em" },
   ".qv-hastable td:empty::before, .qv-hastable th:empty::before": { content: '"\\00a0"' },
   // The toolbar is ALWAYS present above the table (in flow, no hover games —
