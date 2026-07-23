@@ -515,9 +515,6 @@
     <!-- Fixed to the sidebar's width so the tab strip starts exactly at the
          sidebar/editor split line (tabs sit above the editor, VSCode-style). -->
     <div id="tb-left">
-    <button class="tbtn" id="btn-sidebar" data-tip="사이드바 접기/펴기">
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5"/><path d="M6 2.75v10.5"/></svg>
-    </button>
     </div>
     <div id="hdr-title"></div>
     <div id="tabs"></div>
@@ -578,7 +575,6 @@
             <path d="M5 2.5v3h5v-3"/><path d="M5 9.5h6"/><path d="M5 11.5h6"/>
           </svg>
         </button>
-        <div class="tsep"></div>
         <button class="tbtn" id="btn-pdf" data-tip="HTML로 저장하기">
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M8 1.75v7.5"/><path d="M5.25 6.5 8 9.25 10.75 6.5"/>
@@ -2442,20 +2438,17 @@ document.querySelectorAll("#rail button[data-rail]").forEach((b) => {
   };
 });
 
-// Sidebar collapse/expand (persisted with the same key the resizer uses).
-document.getElementById("btn-sidebar").onclick = () => {
-  const root = document.documentElement;
-  const hidden = root.classList.toggle("qv-sb-hidden");
-  try { localStorage.setItem("qv-sidebar-hidden", hidden ? "1" : ""); } catch (_) {}
-};
-
 /* ============ 특수문자 팔레트 ============ */
 // Click a glyph → insert at the cursor; the palette stays open (HWP-style)
 // so runs of symbols don't need reopening. Esc / 닫기 / outside click closes.
-const SYMBOLS = ("· … — – « » 「 」 『 』 ※ ★ ☆ ● ○ ■ □ ◆ ◇ ▲ △ ▼ ▽ → ← ↑ ↓ ↔ ⇒ ⇐ ⇔ "
-  + "± × ÷ ≠ ≤ ≥ ≈ ≡ ∞ ∴ ∵ √ ∝ ∑ ∏ ∫ ∂ ∇ π α β γ δ ε θ λ μ ρ σ τ φ ψ ω Γ Δ Θ Λ Σ Φ Ψ Ω "
-  + "∈ ∉ ⊂ ⊃ ∪ ∩ ∅ ∧ ∨ ¬ ∀ ∃ ° ′ ″ ℃ ℉ € £ ¥ ₩ § ¶ † ‡ © ® ™ "
-  + "½ ⅓ ⅔ ¼ ¾ ¹ ² ³ ₁ ₂ ₃ ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ✓ ✗ ☞ ☜").split(" ").filter(Boolean);
+// HWP 문자표 느낌: 문장부호·괄호 → 수학 → 도형·별 → 화살표 → 그림 기호.
+// (그리스 문자는 제외 — 수식은 $ … $ 로 쓰는 게 맞다.)
+const SYMBOLS = ("· ‥ … ¨ 〃 ― ∥ ∼ ° ′ ″ ¡ ¿ ‰ "
+  + "「 」 『 』 〈 〉 《 》 【 】 ± × ÷ ≠ ≤ ≥ ≒ ≡ ∞ ∴ ∵ ℃ ℉ Å ¢ £ ¥ ₩ € ∠ ⊥ ∂ ∇ § ※ ¶ † ‡ "
+  + "☆ ★ ○ ● ◎ ◇ ◆ □ ■ ▣ △ ▲ ▽ ▼ ◁ ◀ ▷ ▶ ◉ ◈ ◐ ◑ ♤ ♠ ♡ ♥ ♧ ♣ "
+  + "→ ← ↑ ↓ ↔ ↕ ↗ ↙ ↖ ↘ ⇒ ⇐ ⇔ ≪ ≫ √ ∝ ∮ ∑ ∏ ∫ ∬ ∈ ∋ ⊆ ⊇ ⊂ ⊃ ∪ ∩ ∧ ∨ ¬ ∀ ∃ "
+  + "♨ ☏ ☎ ☜ ☞ ♭ ♩ ♪ ♬ ㉿ ㈜ № ㏇ ™ ㏂ ㏘ ℡ © ® "
+  + "① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩ ✓ ✗").split(" ").filter(Boolean);
 const symbolModal = document.getElementById("symbol-modal");
 {
   const grid = document.getElementById("sym-grid");
