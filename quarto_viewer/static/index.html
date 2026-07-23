@@ -70,7 +70,7 @@
      headless WebKit and the real WKWebView). Right edge leaves room for the
      right-hand controls. */
   #tabs {
-    position: absolute; left: calc(var(--sidebar-w, 232px) + 1px); right: 84px;
+    position: absolute; left: calc(var(--sidebar-w, 260px) + 1px); right: 84px;
     top: 6px; bottom: 0; display: flex; align-items: center; gap: 4px;
     overflow-x: auto; overflow-y: hidden; padding: 0 2px; scrollbar-width: none;
   }
@@ -105,7 +105,7 @@
   /* Fixed context bar (table/image controls dock here). */
   #ctxbar {
     display: flex; align-items: center; gap: 2px; flex: none;
-    height: 36px; padding: 0 10px 0 calc(var(--sidebar-w, 232px) + 11px);   /* aligns with the editor area */
+    height: 36px; padding: 0 10px 0 calc(var(--sidebar-w, 260px) + 11px);   /* aligns with the editor area */
     background: color-mix(in srgb, var(--toolbar) 70%, var(--bg));
     border-bottom: 1px solid var(--border);
   }
@@ -133,7 +133,7 @@
 
   /* ---- sidebar file explorer ---- */
   #sidebar {
-    width: var(--sidebar-w, 232px); flex: none; display: flex; flex-direction: column;
+    width: var(--sidebar-w, 260px); flex: none; display: flex; flex-direction: column;
     background: color-mix(in srgb, var(--toolbar) 55%, var(--bg));
     border-right: 1px solid var(--border); overflow: hidden;
     -webkit-user-select: none; user-select: none;
@@ -1479,12 +1479,13 @@ function newTableViaEditor() {
 /* ============ Sidebar resize (drag the divider; snap-collapse) ============ */
 {
   const KEY = "qv-sidebar-w", HKEY = "qv-sidebar-hidden";
-  const MIN = 200, MAX = 520, SNAP = 120;   // below SNAP while dragging → collapse
+  const MIN = 240, MAX = 560, SNAP = 140;   // below SNAP while dragging → collapse
   const root = document.documentElement;
   const setW = (px) => root.style.setProperty("--sidebar-w", Math.min(MAX, Math.max(MIN, px)) + "px");
   const setHidden = (h) => { root.classList.toggle("qv-sb-hidden", h); localStorage.setItem(HKEY, h ? "1" : ""); };
   const saved = parseInt(localStorage.getItem(KEY), 10);
-  if (saved) setW(saved);
+  if (saved && saved >= MIN) setW(saved);
+  else localStorage.removeItem(KEY);   // stale narrow value → fall back to the wide default
   if (localStorage.getItem(HKEY) === "1") setHidden(true);
   const rz = document.getElementById("sidebar-resizer");
   rz.addEventListener("mousedown", (e) => {
