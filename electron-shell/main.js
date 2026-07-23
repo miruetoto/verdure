@@ -136,6 +136,21 @@ const H = {
     st.mtimes.set(p, mtimeOf(p));
     return { saved: true, title: titleOf(p), path: p };
   },
+  // Autosaved docs follow the document's title: rename in place, collision-safe.
+  rename_doc: (_e, { title }) => {
+    if (!st.path) return { error: "no-path" };
+    const dir = path.dirname(st.path);
+    const base = sanitizeName(title);
+    const ext = path.extname(st.path) || ".qmd";
+    if (titleOf(st.path) === base) return { renamed: true, path: st.path, title: base };
+    let p2 = path.join(dir, base + ext);
+    for (let n = 2; fs.existsSync(p2); n++) p2 = path.join(dir, `${base} ${n}${ext}`);
+    try { fs.renameSync(st.path, p2); } catch (e) { return { error: e.message }; }
+    st.mtimes.delete(st.path);
+    st.path = p2;
+    st.mtimes.set(p2, mtimeOf(p2));
+    return { renamed: true, path: p2, title: titleOf(p2) };
+  },
   open_file: async () => {
     const r = await dialog.showOpenDialog(win, { properties: ["openFile"] });
     if (r.canceled || !r.filePaths.length) return null;
