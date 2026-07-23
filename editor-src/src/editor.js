@@ -883,7 +883,10 @@ const theme = EditorView.theme({
     fontFamily: "'Noto Serif','NanumMyeongjo','Nanum Myeongjo',serif",
     fontSize: "16px", lineHeight: "1.5", overflow: "auto",
   },
-  ".cm-content": { padding: "44px 8px 200px", maxWidth: "820px", margin: "0 auto", caretColor: "#ff6f61" },
+  // Left-aligned column (was centered — the floating middle block felt wrong
+  // when the sidebar is hidden). maxWidth keeps lines readable; a fixed left
+  // pad gives the text a stable start line.
+  ".cm-content": { padding: "44px 8px 200px 48px", maxWidth: "868px", margin: "0", caretColor: "#ff6f61" },
   // CM's default 6px left padding on lines pushes plain text 6px right of block
   // widgets (front matter, callouts, tables), making left edges look misaligned.
   // Zero it so every element shares the same left margin.
