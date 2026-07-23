@@ -735,9 +735,20 @@ function buildDecorations(state) {
         return false;
       }
       if (name === "ListMark") {
-        // Indent the list line ~like bootstrap's 2rem so lists sit in from the
-        // text margin (blog/cosmo style), not flush left.
-        addLine(from, "cm-li");
+        // Match Quarto cosmo exactly: list text sits 2em in per nesting level
+        // (measured from a real `quarto render`). The bullet is in-flow here
+        // (the blog's marker hangs) and the source's leading spaces add ~0.6em
+        // per level, so the padding that lands the text at depth·2em works out
+        // to depth·1.4 − 0.66em.
+        let depth = 0;
+        for (let n = node.node.parent; n; n = n.parent) if (/(?:Bullet|Ordered)List$/.test(n.name)) depth++;
+        const padEm = Math.max(0, depth * 1.4 - 0.66).toFixed(2);
+        const ln = doc.lineAt(from), key = ln.from + "|cm-li";
+        if (!seenLine.has(key)) {
+          seenLine.add(key);
+          decos.push({ from: ln.from, to: ln.from, line: true,
+            deco: Decoration.line({ class: "cm-li", attributes: { style: `padding-left:${padEm}em` } }) });
+        }
         // Bullet list markers render as • (ordered numbers stay visible).
         if (/^[-*+]$/.test(doc.sliceString(from, to)) && !linesActive(from, to)) {
           decos.push({ from, to, deco: Decoration.replace({ widget: new BulletWidget() }) });
@@ -872,9 +883,7 @@ const theme = EditorView.theme({
   // widgets (front matter, callouts, tables), making left edges look misaligned.
   // Zero it so every element shares the same left margin.
   ".cm-line": { paddingLeft: "0" },
-  // List lines sit in slightly from the margin (a light indent, not the full
-  // 2rem — that read as too much in the line-based editor).
-  ".cm-line.cm-li": { paddingLeft: "0.6em" },
+  // List indent is applied per line inline (depth·1.4−0.66em); see ListMark.
   // Kill CM's default focus ring (an ugly 1px dotted outline around the editor).
   "&.cm-focused": { outline: "none" },
   "&.cm-focused .cm-cursor": { borderLeftColor: "#ff6f61" },
