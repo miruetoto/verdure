@@ -313,7 +313,9 @@
   .tbl-grid tr.aligns button:hover { color: var(--accent); }
   /* ---- tabset editor popup ---- */
   .tabset-panel { width: min(90vw, 760px); }
-  .tabset-tabbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0; }
+  .tabset-head { display: flex; align-items: flex-end; gap: 8px; border-bottom: 1px solid var(--border-strong); }
+  .tabset-addtab { flex: none; margin-bottom: 4px; }
+  .tabset-tabbar { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0; flex: 1; margin-bottom: -1px; }
   .tabset-tabbar .tstab {
     display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
     border: 1px solid var(--border-strong); border-radius: 8px 8px 0 0;
@@ -352,9 +354,11 @@
   }
   .menu button:hover { background: var(--hover); }
   .menu .mi {
-    width: 16px; text-align: center; color: var(--muted);
-    font-size: 12px; flex: none;
+    width: 18px; height: 18px; flex: none; color: var(--body);
+    display: inline-flex; align-items: center; justify-content: center;
   }
+  .menu .mi svg { width: 17px; height: 17px; }
+  .menu button:hover .mi { color: var(--accent); }
   .menu .dot { width: 10px; height: 10px; border-radius: 3px; background: var(--d); flex: none; margin: 0 3px; }
   .menu-sep { height: 1px; background: var(--border); margin: 5px 4px; }
   .menu-label { font-size: 11px; color: var(--muted); padding: 5px 10px 3px; }
@@ -492,11 +496,11 @@
     <div id="editor-host"></div>
   </div>
   <div id="insert-menu" class="menu" hidden>
-    <button data-snip="callout"><span class="mi">▢</span>콜아웃</button>
-    <button data-snip="table"><span class="mi">▦</span>표</button>
-    <button data-snip="tabset"><span class="mi">▤</span>탭셋</button>
-    <button data-snip="code"><span class="mi">&lt;/&gt;</span>코드 블록</button>
-    <button data-snip="draw"><span class="mi">✎</span>낙서</button>
+    <button data-snip="callout"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 3v10"/></svg></span>콜아웃</button>
+    <button data-snip="table"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6.5h12M6.5 6.5v6.5"/></svg></span>표</button>
+    <button data-snip="tabset"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="12" height="7" rx="1.5"/><path d="M4.2 6V4.2h3.4V6"/></svg></span>탭셋</button>
+    <button data-snip="code"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.5 3 8l3 3.5"/><path d="M10 4.5 13 8l-3 3.5"/></svg></span>코드 블록</button>
+    <button data-snip="draw"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5 13.5 5.5 6 13l-3.5.5L3 10z"/><path d="M9 4 12 7"/></svg></span>낙서</button>
   </div>
 
   <!-- Callout editor popup: pick type (노트/팁/경고/주의/중요) + title + body. -->
@@ -545,12 +549,13 @@
   <!-- Tabset editor popup: add/remove/rename/reorder tabs + edit each tab body. -->
   <div id="tabset-modal" class="overlay" hidden>
     <div class="tbl-panel tabset-panel">
-      <div class="tbl-tools">
-        <button id="tabset-addtab" class="dtool">＋ 탭 추가</button>
-        <span class="tbl-hint">탭 이름을 클릭해 전환 · 내용은 아래에서 편집 · 탭 이름 옆 ×로 개별 삭제</span>
+      <div class="tabset-head">
+        <div id="tabset-tabbar" class="tabset-tabbar"></div>
+        <button id="tabset-addtab" class="dtool tabset-addtab">＋ 탭</button>
       </div>
-      <div id="tabset-tabbar" class="tabset-tabbar"></div>
+      <div class="tbl-hint">탭 이름 클릭=전환 · 옆 ×=삭제 · 아래에서 그 탭의 내용을 편집합니다.</div>
       <textarea id="tabset-body" class="tabset-body" placeholder="이 탭의 내용 (마크다운)"></textarea>
+      <div class="obj-preview"><div class="obj-preview-label">미리보기</div><div id="tabset-preview" class="qdoc"></div></div>
       <div class="tbl-foot">
         <button id="tabset-delete" class="dtool danger">탭셋 삭제</button>
         <span class="spacer"></span>
@@ -1388,7 +1393,7 @@ const SNIPPETS = {
   // the document caret must land AFTER it, never invisibly inside the pipes.
   "table": "| 열 1 | 열 2 |\n| --- | --- |\n|  |  |\n",
   "tabset": "::: {.panel-tabset}\n\n## 탭 1\n\n«»\n\n## 탭 2\n\n\n:::\n",
-  "code": "```python\n«»\n```\n",
+  "code": "```«»\n\n```\n",
   "callout-note": "::: {.callout-note}\n«»\n:::\n",
   "callout-tip": "::: {.callout-tip}\n«»\n:::\n",
   "callout-warning": "::: {.callout-warning}\n«»\n:::\n",
@@ -1944,7 +1949,19 @@ function openTabsetEditor(model, onApply, onDelete) {
 }
 function closeTabsetEditor() { tabsetModal.setAttribute("hidden", ""); tsState = null; if (ed) ed.focus(); }
 function saveTabBody() { const t = tsState.m.tabs[tsState.active]; if (t) t.body = document.getElementById("tabset-body").value; }
-function loadTabBody() { const t = tsState.m.tabs[tsState.active]; document.getElementById("tabset-body").value = t ? t.body : ""; }
+function loadTabBody() { const t = tsState.m.tabs[tsState.active]; document.getElementById("tabset-body").value = t ? t.body : ""; updateTabsetPreview(); }
+function updateTabsetPreview() {
+  if (!tsState) return;
+  const el = document.getElementById("tabset-preview");
+  el.innerHTML = mdToHtml(QVEditor.serializeTabset(tsState.m));
+  enhance(el); typeset(el);
+  // Make the preview's tab buttons switch panels (same as the rendered widget).
+  el.querySelectorAll(".tab-btn").forEach((btn) => btn.addEventListener("click", () => {
+    const ts = btn.dataset.ts, idx = btn.dataset.idx;
+    el.querySelectorAll(`.tab-btn[data-ts="${ts}"]`).forEach((b) => b.classList.toggle("active", b.dataset.idx === idx));
+    el.querySelectorAll(`.tab-panel[data-ts="${ts}"]`).forEach((p) => p.classList.toggle("active", p.dataset.idx === idx));
+  }));
+}
 function renderTabsetBar() {
   const bar = document.getElementById("tabset-tabbar");
   bar.innerHTML = "";
@@ -1953,7 +1970,7 @@ function renderTabsetBar() {
     el.className = "tstab" + (i === tsState.active ? " active" : "");
     const inp = document.createElement("input");
     inp.value = t.title; inp.placeholder = "탭 이름";
-    inp.addEventListener("input", () => { t.title = inp.value; });
+    inp.addEventListener("input", () => { t.title = inp.value; updateTabsetPreview(); });
     inp.addEventListener("focus", () => { if (i !== tsState.active) { saveTabBody(); tsState.active = i; renderTabsetBar(); loadTabBody(); document.querySelector(`#tabset-tabbar .tstab:nth-child(${i + 1}) input`).focus(); } });
     el.appendChild(inp);
     if (tsState.m.tabs.length > 1) {
@@ -1978,6 +1995,7 @@ document.getElementById("tabset-addtab").onclick = () => {
   renderTabsetBar(); loadTabBody();
   const i = document.querySelector("#tabset-tabbar .tstab.active input"); if (i) { i.focus(); i.select(); }
 };
+document.getElementById("tabset-body").addEventListener("input", () => { if (tsState) { saveTabBody(); updateTabsetPreview(); } });
 document.getElementById("tabset-cancel").onclick = closeTabsetEditor;
 document.getElementById("tabset-delete").onclick = () => { const d = tsState.onDelete; closeTabsetEditor(); if (d) d(); };
 document.getElementById("tabset-apply").onclick = () => {
