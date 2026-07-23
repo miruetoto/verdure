@@ -353,9 +353,14 @@ fn save_attachment(state: &State<SharedState>, bytes: &[u8], prefix: &str) -> Va
     }
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let name = format!("{prefix}-{stamp}.png");
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let mut name = format!("{prefix}-{stamp}.png");
+    let mut suffix = 2;
+    while dir.join(&name).exists() {
+        name = format!("{prefix}-{stamp}-{suffix}.png");
+        suffix += 1;
+    }
     if let Err(e) = fs::write(dir.join(&name), bytes) {
         return json!({ "error": e.to_string() });
     }

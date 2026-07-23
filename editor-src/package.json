@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "description": "CodeMirror 6 live-preview editor bundle for Quarto Viewer",
   "scripts": {
-    "build": "esbuild src/editor.js --bundle --format=iife --global-name=QVEditor --outfile=../quarto_viewer/static/vendor/cm6/editor.bundle.js --minify"
+    "build": "esbuild src/editor.js --bundle --format=iife --global-name=QVEditor --outfile=../quarto_viewer/static/vendor/cm6/editor.bundle.js --minify",
+    "test:smoke": "node smoke-tests.cjs",
+    "test:chromium": "node chromium-tests.cjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

@@ -13,26 +13,31 @@ const { webkit } = require("playwright");
     await new Promise(r=>setTimeout(r,500));
     const wrap=document.querySelector(".qv-imgwrap");
     const img=document.querySelector(".qv-imgwrap img");
-    const bar=document.querySelector(".qv-img-alignbar");
-    const onBtn=document.querySelector(".qv-img-alignbar button.on");
-    // toggle-off via applyImageAttr path: click simulation → dispatch mousedown on center btn
-    const centerBtn=[...document.querySelectorAll(".qv-img-alignbar button")][1];
-    centerBtn.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true}));
+    const box=document.querySelector(".qv-imgbox");
+    box.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true}));
+    await new Promise(r=>setTimeout(r,200));
+    const modalOpen=!document.getElementById("image-modal").hasAttribute("hidden");
+    document.querySelector('#img-aligns button[data-al=""]').click();
+    document.getElementById("img-apply").click();
     await new Promise(r=>setTimeout(r,400));
     const lineText=[...v.state.doc.iterLines()].find(l=>l.startsWith("!["));
-    // re-align to right via new widget's bar
-    const rightBtn=[...document.querySelectorAll(".qv-img-alignbar button")][2];
-    rightBtn.dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true}));
+    document.querySelector(".qv-imgbox").dispatchEvent(new MouseEvent("mousedown",{bubbles:true,cancelable:true}));
+    await new Promise(r=>setTimeout(r,200));
+    document.querySelector('#img-aligns button[data-al="right"]').click();
+    document.getElementById("img-apply").click();
     await new Promise(r=>setTimeout(r,400));
     const lineText2=[...v.state.doc.iterLines()].find(l=>l.startsWith("!["));
     return {
       centered: wrap ? wrap.classList.contains("qv-align-center") : null,
       widthApplied: img ? img.style.width : null,
-      barExists: !!bar, activeMarked: !!onBtn,
+      modalOpen,
       afterToggleOff: lineText,      // fig-align should be gone, width kept
       afterRight: lineText2,         // fig-align="right"
     };
   });
   console.log(JSON.stringify(r,null,2));
+  if (!r.centered || r.widthApplied !== "120px" || !r.modalOpen ||
+      /fig-align/.test(r.afterToggleOff || "") ||
+      !/fig-align="right"/.test(r.afterRight || "")) process.exitCode = 1;
   await browser.close();
 })();

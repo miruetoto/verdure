@@ -19,20 +19,23 @@ const { webkit } = require("playwright");
   const out = {};
 
   // 1) click the rendered image → image-modal opens
-  const im = await page.evaluate(() => { const i = document.querySelector(".qv-img"); const r = i.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-  await page.mouse.click(im.x, im.y); await page.waitForTimeout(400);
+  await page.evaluate(() => document.querySelector(".qv-imgwrap")
+    .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true })));
+  await page.waitForTimeout(400);
   out.modalOpen = await page.evaluate(() => !document.getElementById("image-modal").hasAttribute("hidden"));
 
-  // 2) set align=center, width=50%, apply
+  // 2) set caption + align=center, apply. Size is intentionally controlled by
+  // the image corner grip now; the old modal slider no longer exists.
   await page.evaluate(() => document.querySelector('#img-aligns button[data-al="center"]').click());
-  await page.evaluate(() => { const s = document.getElementById("img-width"); s.value = 50; s.dispatchEvent(new Event("input")); });
+  await page.evaluate(() => { document.getElementById("img-caption").value = "설명"; });
   await page.evaluate(() => document.getElementById("img-apply").click());
   await page.waitForTimeout(400);
-  out.afterApply = await page.evaluate(() => ed.view.state.doc.toString().split("\n").find((l) => l.startsWith("![]")));
+  out.afterApply = await page.evaluate(() => ed.view.state.doc.toString().split("\n").find((l) => l.startsWith("![")));
 
   // 3) reopen → delete
-  const im2 = await page.evaluate(() => { const i = document.querySelector(".qv-img"); const r = i.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
-  await page.mouse.click(im2.x, im2.y); await page.waitForTimeout(300);
+  await page.evaluate(() => document.querySelector(".qv-imgwrap")
+    .dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true })));
+  await page.waitForTimeout(300);
   await page.evaluate(() => document.getElementById("img-delete").click());
   await page.waitForTimeout(400);
   out.afterDelete = await page.evaluate(() => ed.view.state.doc.toString().includes("![]"));
@@ -60,5 +63,10 @@ const { webkit } = require("playwright");
   out.tableAfterBksp = await page.evaluate(() => /\| A \| B \|/.test(ed.view.state.doc.toString()));
 
   console.log(JSON.stringify(out, null, 1));
+  const ok = out.modalOpen &&
+    /!\[설명\]\(img\/a\.png\).*fig-align="center"/.test(out.afterApply || "") &&
+    out.afterDelete === false && out.isolation &&
+    out.tableBefore && out.tableAfterBksp === false;
+  if (!ok) process.exitCode = 1;
   await browser.close();
 })();

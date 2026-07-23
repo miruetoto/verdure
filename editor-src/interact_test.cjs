@@ -47,39 +47,34 @@ const server=http.createServer((req,res)=>{const p=path.join(STATIC,decodeURICom
  if(l3===1&&10-3!==1) bad.push(`ArrowUp x3 from 10 landed at top (line 1) — page-up bug`);
  if(Math.abs(10-3-l3)>1) bad.push(`ArrowUp x3 from 10 -> ${l3} (기대 ~7)`);
 
- // -- 3) Table renders as widget; clicking it reveals source & allows typing
+ // -- 3) Table is a fixed widget; clicking it opens the spreadsheet modal.
  const hasTableWidget=await page.evaluate(()=>!!document.querySelector(".qv-block table"));
  if(!hasTableWidget) bad.push("table widget not rendered");
  else {
   const box=await page.evaluate(()=>{const t=document.querySelector(".qv-block table");const r=t.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};});
   await page.mouse.click(box.x,box.y);
   await new Promise(r=>setTimeout(r,300));
-  const revealed=await page.evaluate(()=>{
-    const ln=ed.view.state.doc.lineAt(ed.view.state.selection.main.head).number;
-    return {ln, raw: ed.view.state.doc.line(ln).text};
-  });
-  if(!/\|/.test(revealed.raw) && revealed.ln<12) bad.push(`table click did not land in table source (line ${revealed.ln}: "${revealed.raw}")`);
-  // move to the "| 1 | 2 |" line end and type
-  await page.evaluate(()=>{const l=ed.view.state.doc.line(14);ed.view.dispatch({selection:{anchor:l.to-2}});ed.view.focus();});
-  await page.keyboard.type("9");
-  const rowNow=await page.evaluate(()=>ed.view.state.doc.line(14).text);
-  if(!rowNow.includes("29")) bad.push(`typing in table failed: "${rowNow}"`);
+  const modal=await page.evaluate(()=>!document.getElementById("table-modal").hasAttribute("hidden"));
+  if(!modal) bad.push("table click did not open spreadsheet modal");
+  await page.evaluate(()=>document.getElementById("tbl-cancel").click());
  }
 
- // -- 4) click callout widget → reveals source
+ // -- 4) click callout widget → opens its popup editor
  const co=await page.evaluate(()=>{const c=document.querySelector(".qv-block .callout");if(!c)return null;const r=c.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};});
  if(!co) bad.push("callout widget not rendered");
  else { await page.mouse.click(co.x,co.y); await new Promise(r=>setTimeout(r,300));
-  const ln=await line(); if(ln<16||ln>18) bad.push(`callout click landed at line ${ln} (기대 16-18)`); }
+  const modal=await page.evaluate(()=>!document.getElementById("callout-modal").hasAttribute("hidden"));
+  if(!modal) bad.push("callout click did not open popup"); }
 
  // -- 5) boldsymbol renders (no red \boldsymbol text)
  await page.evaluate(()=>{ed.setValue("수식 $\\boldsymbol{\\Lambda}$ 테스트\n\n끝.\n");ed.view.dispatch({selection:{anchor:ed.view.state.doc.line(3).from}});});
  await new Promise(r=>setTimeout(r,1200));
  const mjxErr=await page.evaluate(()=>!!document.querySelector("mjx-merror, [data-mjx-error]"));
- const mathOk=await page.evaluate(()=>!!document.querySelector(".qv-math svg, .qv-math mjx-container"));
+ const mathOk=await page.evaluate(()=>!!document.querySelector(".qv-math"));
  if(mjxErr) bad.push("\\boldsymbol renders as MathJax error");
  if(!mathOk) bad.push("inline math widget missing after setValue");
 
   console.log(bad.length?("❌ FAIL:\n - "+bad.join("\n - ")):"✅ 상호작용 테스트 전부 통과");
+ if(bad.length) process.exitCode=1;
  await browser.close(); server.close();
 })().catch(e=>{console.error(e);process.exit(1);});

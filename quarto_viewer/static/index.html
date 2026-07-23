@@ -768,7 +768,7 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
       try {
         const att = await dir.getDirectoryHandle("attachments", { create: true });
         const d = new Date(), p = (n) => String(n).padStart(2, "0");
-        const name = `${prefix}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`;
+        const name = `${prefix}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${String(d.getMilliseconds()).padStart(3, "0")}.png`;
         const fh = await att.getFileHandle(name, { create: true });
         const w = await fh.createWritable(); await w.write(blob); await w.close();
         return { path: "attachments/" + name };
@@ -848,9 +848,18 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
         } catch (_) { /* fall through to download */ }
       }
       // No writable handle (untitled doc or Safari): save as download.
-      const name = (h && h.name) || "untitled.qmd";
-      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([text], { type: "text/markdown" })), download: name });
-      a.click(); URL.revokeObjectURL(a.href);
+      // Safari's <input type=file> fallback has no persistent file handle, but
+      // activePath still carries `web:<original name>`. Preserve that name
+      // instead of silently turning every save into `untitled.qmd`.
+      const fallbackName = activePath.startsWith("web:")
+        ? activePath.slice(4).split("/").pop()
+        : "";
+      const name = (h && h.name) || fallbackName || "untitled.qmd";
+      const href = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+      const a = Object.assign(document.createElement("a"), { href, download: name });
+      a.click();
+      // Revoking synchronously can cancel the download in Safari/WebKit.
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
       return { saved: true, title: name, path: activePath || "web:" + name };
     },
     save_as: async function (text) { return this.save(text); },
@@ -1076,11 +1085,20 @@ function whenConnected(el) {
     })();
   });
 }
+// MathJax mutates one shared document and concurrent typesetPromise calls can
+// reject each other during first-load bursts (several formulas mount at once).
+// Serialize them so every widget eventually leaves its delimiter placeholder.
+let _typesetQueue = Promise.resolve();
 async function typeset(el) {
   await whenConnected(el);
   if (!el.isConnected) return;
   if (!elementHasMath(el)) return;   // no math → don't pull in MathJax
-  try { await ensureMathJax(); if (MathJax.typesetPromise) await MathJax.typesetPromise([el]); } catch (_) {}
+  const job = _typesetQueue.then(async () => {
+    await ensureMathJax();
+    if (el.isConnected && MathJax.typesetPromise) await MathJax.typesetPromise([el]);
+  });
+  _typesetQueue = job.catch(() => {});
+  try { await job; } catch (_) {}
 }
 // Synchronous math render for editor widgets. When MathJax is already loaded,
 // convert `tex` to its final CHTML *synchronously* and put it in `el`. This
@@ -1334,6 +1352,9 @@ function switchTo(id) {
   const top = t.scrollTop || 0;
   requestAnimationFrame(() => { ed.view.scrollDOM.scrollTop = top; });
   ed.focus();
+  // A debounce started in another tab must never save this tab by accident.
+  // If this untitled tab still has edits, schedule its own autosave now.
+  if (!t.path && isDirty(t)) scheduleAutosave();
 }
 
 function addTab(st) {
@@ -1388,7 +1409,8 @@ function scheduleAutosave() {
   const t = activeTab(); if (!t) return;
   if (t.path && !t.auto) return;              // a real opened file → manual save only
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(doAutosave, 1500);
+  const tabId = t.id;
+  autosaveTimer = setTimeout(() => doAutosave(tabId), 1500);
 }
 function titleHint(text) {
   let m = text.match(/^---\r?\n[\s\S]*?title:\s*["']?([^"'\n]+)["']?[\s\S]*?\r?\n---/);
@@ -1402,8 +1424,11 @@ function flashAutosaved() {
   statusEl.textContent = "자동 저장됨";
   setTimeout(() => { if (statusEl.textContent === "자동 저장됨") statusEl.textContent = ""; }, 2000);
 }
-async function doAutosave() {
+async function doAutosave(expectedTabId = activeId) {
   const t = activeTab(); if (!t) return;
+  // The user may have switched tabs during the debounce. The backend's save
+  // target is the active tab, so saving here would write the wrong document.
+  if (t.id !== expectedTabId) return;
   const text = ed.getValue();
   try {
     if (!t.path) {

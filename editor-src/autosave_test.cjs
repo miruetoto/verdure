@@ -25,6 +25,24 @@ const { webkit } = require("playwright");
   await page.evaluate(()=>{ const v=ed.view; v.dispatch({changes:{from:v.state.doc.length,insert:" 추가"}}); });
   await page.waitForTimeout(2200);
   const r2 = await page.evaluate(()=>window.__autosaveCalls);
-  console.log(JSON.stringify({first:r1, after:r2},null,1));
+  // Regression: an autosave debounce from tab A must never save tab B.
+  await page.evaluate(()=>{ window.__autosaveCalls=[]; doNew(); });
+  await page.evaluate(()=>{ const v=ed.view; v.dispatch({changes:{from:v.state.doc.length,insert:"# 문서A\n\n내용"}}); });
+  const aId = await page.evaluate(()=>activeId);
+  await page.evaluate(()=>doNew());
+  await page.waitForTimeout(1800);
+  const callsWhileBActive = await page.evaluate(()=>window.__autosaveCalls.slice());
+  await page.evaluate((id)=>switchTo(id),aId);
+  await page.waitForTimeout(1800);
+  const callsAfterReturn = await page.evaluate(()=>window.__autosaveCalls.slice());
+  const race = {callsWhileBActive,callsAfterReturn};
+  console.log(JSON.stringify({first:r1, after:r2, race},null,1));
+  const ok = r1.calls[0]?.[0] === "autosave" &&
+    r2.some((x)=>x[0] === "save") &&
+    callsWhileBActive.length === 0 &&
+    callsAfterReturn.length === 1 &&
+    callsAfterReturn[0][0] === "autosave" &&
+    callsAfterReturn[0][1] === "문서A";
+  if (!ok) process.exitCode = 1;
   await browser.close();
 })();

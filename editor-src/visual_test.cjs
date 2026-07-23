@@ -106,8 +106,10 @@ const server = http.createServer((req, res) => {
       inlineMath: pick(".qv-math:not(.qv-math-block)"),
       blockMath: pick(".qv-math-block"),
       mathSvgs: pick("mjx-container"),
-      nanSvgs: [...document.querySelectorAll("mjx-container svg")].filter((s) =>
-        /NaN/.test(s.getAttribute("width") || "") || /NaN/.test(s.getAttribute("viewBox") || "")).length,
+      nanMath: [...document.querySelectorAll("mjx-container")].filter((s) => {
+        const r = s.getBoundingClientRect();
+        return !Number.isFinite(r.width) || !Number.isFinite(r.height);
+      }).length,
       callouts: pick(".qv-block .callout"),
       tabsets: pick(".qv-block .tabset"),
       images: pick(".qv-img"),
@@ -123,17 +125,18 @@ const server = http.createServer((req, res) => {
   // Verdicts.
   const bad = [];
   if (!report.editorMounted) bad.push("editor not mounted");
-  if (report.nanSvgs > 0) bad.push(`${report.nanSvgs} math SVGs have NaN dimensions`);
+  if (report.nanMath > 0) bad.push(`${report.nanMath} MathJax nodes have invalid dimensions`);
   if (errors.some((e) => /NaN/.test(e))) bad.push("NaN errors on console");
   for (const m of report.inlineMath) if (m.h > report.lineHeight * 1.6) bad.push(`inline math too tall: ${m.h}px (line ${report.lineHeight}px)`);
   for (const m of report.blockMath) if (m.h > 200) bad.push(`block math too tall: ${m.h}px`);
-  for (const s of report.mathSvgs) if (s.h > 300 || s.w > 1300) bad.push(`oversized math svg: ${s.w}x${s.h}px`);
+  for (const s of report.mathSvgs) if (s.h > 300 || s.w > 1300) bad.push(`oversized math: ${s.w}x${s.h}px`);
   if (report.inlineMath.length === 0) bad.push("no inline math rendered");
   if (report.mathSvgs.length === 0) bad.push("no math rendered at all");
   if (report.callouts.length === 0) bad.push("no callout rendered");
   if (report.tabsets.length === 0) bad.push("no tabset rendered");
   if (report.tables.length === 0) bad.push("no table rendered (raw pipes: " + report.rawPipes + ")");
   console.log(bad.length ? "❌ ISSUES:\n - " + bad.join("\n - ") : "✅ all size checks passed");
+  if (bad.length) process.exitCode = 1;
 
   await page.screenshot({ path: path.join(OUT, "app.png"), fullPage: false });
   console.log("screenshot:", path.join(OUT, "app.png"));

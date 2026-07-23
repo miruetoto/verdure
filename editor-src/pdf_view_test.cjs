@@ -22,7 +22,7 @@ const server=http.createServer((req,res)=>{const p=path.join(STATIC,decodeURICom
   window.__exported=null;
   window.pywebview={api:{get_state:async()=>({text:doc,title:"post.qmd",path:"/tmp/post.qmd"}),poll:async()=>null,
    save:async()=>({saved:true,title:"post.qmd"}),open_file:async()=>null,resolve_asset:async()=>null,
-   open_export:async(html)=>{window.__exported=html;return{opened:true};}}};
+   export_html:async(html)=>{window.__exported=html;return{saved:true,path:"/tmp/post.html"};}}};
   window.addEventListener("DOMContentLoaded",()=>setTimeout(()=>window.dispatchEvent(new Event("pywebviewready")),50));
  },DOC);
  await page.goto(`http://127.0.0.1:${port}/index.html`,{waitUntil:"networkidle0"});
@@ -45,7 +45,7 @@ const server=http.createServer((req,res)=>{const p=path.join(STATIC,decodeURICom
  await page.click("#btn-pdf");
  await new Promise(r=>setTimeout(r,5000));
  const html=await page.evaluate(()=>window.__exported);
- if(!html){bad.push("open_export not called");}
+ if(!html){bad.push("export_html not called");}
  else{
    fs.writeFileSync(path.join(STATIC,"_export.html"),html);
    const p2=await browser.newPage();
@@ -58,7 +58,7 @@ const server=http.createServer((req,res)=>{const p=path.join(STATIC,decodeURICom
      headings:document.querySelectorAll("h1,h2,h3").length,
      title:!!document.querySelector(".frontmatter .title"),
      mjxZeroH:[...document.querySelectorAll("mjx-container")].filter(m=>m.getBoundingClientRect().height<4).length,
-     mjxStyles:!!document.querySelector("style[id^=MJX]"),
+     mjxStyles:[...document.querySelectorAll("style")].some(s=>/mjx-container|mjx-c/.test(s.textContent)),
      zeroSamples:[...document.querySelectorAll("mjx-container")].filter(m=>m.getBoundingClientRect().height<4).slice(0,4).map(m=>({
        cls:m.className, parentCls:(m.parentElement||{}).className||"", parentChain:(function(e){let c=[];for(let i=0;i<4&&e;i++){c.push(e.tagName+"."+(e.className||"").toString().slice(0,25));e=e.parentElement;}return c.join(" < ");})(m.parentElement),
        html:m.outerHTML.slice(0,120)})),

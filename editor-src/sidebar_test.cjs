@@ -48,9 +48,13 @@ const server = http.createServer((req, res) => {
   // sidebar visible on boot (launched on a folder)
   const shown = await page.evaluate(() => !document.getElementById("sidebar").hasAttribute("hidden"));
   if (!shown) bad.push("사이드바가 폴더 부팅 시 안 보임");
-  const rootName = await page.evaluate(() => document.getElementById("sidebar-root").textContent);
+  const rootName = await page.evaluate(() => document.querySelector(".tree-root-head .tn")?.textContent);
   if (rootName !== "proj") bad.push("루트 이름 = " + rootName);
-  const rows = await page.evaluate(() => [...document.querySelectorAll("#sidebar-tree > div > .tree-row .tn")].map(e => e.textContent));
+  const rows = await page.evaluate(() => {
+    const sec = document.querySelector(".tree-root-sec");
+    const kids = sec?.children[1];
+    return kids ? [...kids.children].map((n) => n.querySelector(":scope > .tree-row .tn")?.textContent).filter(Boolean) : [];
+  });
   if (JSON.stringify(rows) !== JSON.stringify(["sub", "a.qmd", "b.md"])) bad.push("트리 최상위 = " + JSON.stringify(rows));
 
   // editor should NOT have auto-opened files — just the blank tab

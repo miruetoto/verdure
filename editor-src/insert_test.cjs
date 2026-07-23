@@ -42,21 +42,27 @@ const server = http.createServer((req, res) => {
     await page.click(`#insert-menu button[data-snip="${snip}"]`); await pause(200);
   }
 
-  await insertViaMenu("callout-note");
+  await insertViaMenu("callout");
+  await page.evaluate(() => document.getElementById("co-apply").click());
+  await pause();
   let v = await val();
   if (!v.includes("::: {.callout-note}") || !/:::\s*$/m.test(v)) bad.push("callout-note snippet wrong: " + JSON.stringify(v.slice(-60)));
 
   await insertViaMenu("table");
+  await page.evaluate(() => document.getElementById("tbl-apply").click());
+  await pause();
   v = await val();
   if (!/\| 열 1 \| 열 2 \|/.test(v) || !/\| --- \| --- \|/.test(v)) bad.push("table snippet wrong");
 
   await insertViaMenu("tabset");
+  await page.evaluate(() => document.getElementById("tabset-apply").click());
+  await pause();
   v = await val();
   if (!v.includes("::: {.panel-tabset}") || !v.includes("## 탭 1") || !v.includes("## 탭 2")) bad.push("tabset snippet wrong");
 
   await insertViaMenu("code");
   v = await val();
-  if (!v.includes("```python")) bad.push("code snippet wrong");
+  if (!v.includes("```\n\n```")) bad.push("code snippet wrong");
 
   // no stray sentinel token left in the document
   if (v.includes("«»")) bad.push("cursor sentinel « » leaked into document");
