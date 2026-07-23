@@ -56,12 +56,15 @@
 .qdoc h5, .qdoc h6 { font-size: 1em; }
 
 .qdoc p { margin: 0 0 1em; color: var(--fg); }
-.qdoc li { color: var(--body); margin: 0.2em 0; }
-.qdoc li > p { margin: 0.2em 0; }
-.qdoc ul, .qdoc ol { padding-left: 1.6em; margin: 0.3em 0 1em; }
-.qdoc li > ul, .qdoc li > ol { margin: 0.2em 0 0.3em; }
+/* Lists follow Quarto cosmo (bootstrap) defaults — the blog's styles.css sets
+   only the list font, nothing else. So: 2rem indent, 1rem bottom margin, no
+   per-item margin, disc/circle/square nesting. */
+.qdoc li { color: var(--body); }
+.qdoc ul, .qdoc ol { padding-left: 2rem; margin: 0 0 1rem; }
+.qdoc ol ol, .qdoc ul ul, .qdoc ol ul, .qdoc ul ol { margin-bottom: 0; }
 .qdoc ul { list-style: disc; }
 .qdoc ul ul { list-style: circle; }
+.qdoc ul ul ul { list-style: square; }
 .qdoc a { color: var(--link); text-decoration: none; transition: color .3s ease; }
 .qdoc a:hover { text-decoration: underline; color: var(--link-hover); }
 .qdoc strong { font-weight: 700; color: var(--fg); }

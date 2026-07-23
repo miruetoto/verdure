@@ -68,8 +68,9 @@ function imageDocOps(view, dom, raw) {
   const w0 = (/(?:^|\s)width=(\d+%?)/.exec(attrs) || [])[1] || null;
   const a0 = (/fig-align="?(left|center|right)"?/.exec(attrs) || [])[1] || null;
   let used = false;
-  const build = ({ src = src0, width, align }) => {
-    let t = "![" + alt0 + "](" + src + ")";
+  // The alt text IS the Quarto figure caption (![Caption](src) renders <figcaption>).
+  const build = ({ alt = alt0, src = src0, width, align }) => {
+    let t = "![" + alt + "](" + src + ")";
     const parts = [];
     if (width) parts.push("width=" + width);
     if (align) parts.push('fig-align="' + align + '"');
@@ -82,8 +83,12 @@ function imageDocOps(view, dom, raw) {
     if (HOST.settleCaret) HOST.settleCaret(rg.from + tok.length);
   };
   return {
-    apply: (patch) => write(build({ width: "width" in patch ? patch.width : w0, align: "align" in patch ? patch.align : a0 })),
-    rewrite: ({ src, width, align }) => write(build({ src, width, align })),
+    apply: (patch) => write(build({
+      alt: "caption" in patch ? patch.caption : alt0,
+      width: "width" in patch ? patch.width : w0,
+      align: "align" in patch ? patch.align : a0,
+    })),
+    rewrite: ({ src, width, align, caption }) => write(build({ alt: caption != null ? caption : alt0, src, width, align })),
     remove: () => { if (!used) { used = true; removeObjRange(view, dom, raw); } },
   };
 }
@@ -700,6 +705,9 @@ function buildDecorations(state) {
         return false;
       }
       if (name === "ListMark") {
+        // Indent the list line ~like bootstrap's 2rem so lists sit in from the
+        // text margin (blog/cosmo style), not flush left.
+        addLine(from, "cm-li");
         // Bullet list markers render as • (ordered numbers stay visible).
         if (/^[-*+]$/.test(doc.sliceString(from, to)) && !linesActive(from, to)) {
           decos.push({ from, to, deco: Decoration.replace({ widget: new BulletWidget() }) });
@@ -834,6 +842,8 @@ const theme = EditorView.theme({
   // widgets (front matter, callouts, tables), making left edges look misaligned.
   // Zero it so every element shares the same left margin.
   ".cm-line": { paddingLeft: "0" },
+  // List lines sit in from the margin (cosmo/bootstrap ~2rem list indent).
+  ".cm-line.cm-li": { paddingLeft: "1.6em" },
   // Kill CM's default focus ring (an ugly 1px dotted outline around the editor).
   "&.cm-focused": { outline: "none" },
   "&.cm-focused .cm-cursor": { borderLeftColor: "#ff6f61" },
