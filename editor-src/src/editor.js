@@ -1024,6 +1024,12 @@ const theme = EditorView.theme({
   // filler so a fresh table isn't a stack of hairlines.
   ".qv-hastable": { cursor: "pointer" },
   ".qv-hastable:hover table": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "4px" },
+  // Every popup-edited object announces itself the same way the table does:
+  // hover → soft coral outline (탭셋, 콜아웃, 제목/front matter).
+  ".qv-hastabset, .qv-hascallout, .qv-hasfm": { cursor: "pointer" },
+  ".qv-hastabset:hover .tabset": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "4px" },
+  ".qv-hascallout:hover .callout": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "6px" },
+  ".qv-hasfm:hover .frontmatter": { outline: "2px solid #ffd5ce", outlineOffset: "6px", borderRadius: "6px" },
   ".qv-hastable td, .qv-hastable th": { minWidth: "3.5em", height: "1.7em" },
   ".qv-hastable td:empty::before, .qv-hastable th:empty::before": { content: '"\\00a0"' },
   // The toolbar is ALWAYS present above the table (in flow, no hover games —

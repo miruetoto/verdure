@@ -1202,7 +1202,12 @@ function typesetSync(el, tex, display) {
     const node = MathJax.tex2chtml(String(tex), { display: !!display });
     el.textContent = "";
     el.appendChild(node);
-    MathJax.startup.document.updateDocument();  // (re)emit the CHTML glyph stylesheet
+    // clear() BEFORE updateDocument: without it the CHTML stylesheet is not
+    // regenerated, so glyphs first seen in THIS formula stay invisible (the
+    // help doc's ∫/x/d rendered as blanks while =,1,0 — already styled by an
+    // earlier inline formula — showed).
+    MathJax.startup.document.clear();
+    MathJax.startup.document.updateDocument();
     return true;
   } catch (_) { return false; }
 }
@@ -1589,6 +1594,7 @@ async function doAutosave(expectedTabId = activeId) {
   try {
     if (!t.path) {
       if (!api().autosave) return;            // backend without autosave (pywebview)
+      if (t.help) return;                     // help doc never silently becomes a file (⌘S to keep it)
       if (!text.trim() || text === NEW_DOC) return;  // untouched template → no file
       const r = await api().autosave(text, titleHint(text));
       if (r && r.saved) {
