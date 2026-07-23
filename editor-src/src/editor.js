@@ -882,7 +882,9 @@ const theme = EditorView.theme({
     display: "inline-block", width: "100%", height: "1px",
     background: "#dee2e6", verticalAlign: "middle",
   },
-  ".qv-bullet": { color: "#8a8a80" },
+  // Blog-style bullet: body-toned disc with a comfortable gap before the text
+  // (not the cramped pale dot it was).
+  ".qv-bullet": { color: "#555", paddingRight: "0.45em", fontSize: "0.9em" },
   ".qv-math": { color: "#333" },
   ".qv-math-block": { textAlign: "center", margin: "2px 0" },
   ".qv-block": { margin: "0", position: "relative" },
