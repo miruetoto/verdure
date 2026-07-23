@@ -165,7 +165,11 @@
      stays at the left edge (drag right or double-click to reopen). */
   html.qv-sb-hidden #sidebar { display: none; }
   html.qv-sb-hidden #sidebar-resizer { margin-left: 0; }
-  html.qv-web #sidebar { display: none; }  /* web build: no folder access → no explorer */
+  /* web: the sidebar shows RECENT DOCS (localStorage); folder access is a
+     mac-app feature, so the ＋(폴더 열기) button is hidden and 열기/저장 are
+     visually sealed (clicking explains the mac app). */
+  html.qv-web #sidebar-addbtn { display: none; }
+  html.qv-web #btn-open, html.qv-web #btn-save { opacity: .35; }
   /* No border-bottom here: it sat at a height nothing on the editor side
      matched, so the top-left junction showed three misaligned lines. */
   #sidebar-head {
@@ -190,6 +194,35 @@
   }
   #sidebar-addbtn:hover { background: var(--hover); color: var(--fg); }
   #sidebar-tree { flex: 1; overflow: auto; padding: 4px 0 12px; }
+  /* vertical tabs — open documents list (Obsidian-style, above the explorer) */
+  #side-tabs-head {
+    padding: 10px 12px 4px; font: 600 11px/1 -apple-system, sans-serif;
+    color: var(--muted); letter-spacing: .04em;
+  }
+  #side-tabs { flex: none; max-height: 40%; overflow: auto; padding-bottom: 6px; }
+  .side-tab {
+    display: flex; align-items: center; gap: 6px; padding: 4px 12px 4px 14px;
+    font: 13px/1.4 -apple-system, sans-serif; color: var(--body);
+    cursor: pointer; white-space: nowrap; overflow: hidden;
+  }
+  .side-tab:hover { background: var(--hover); }
+  .side-tab.active {
+    background: #f6ede8; color: var(--fg);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .side-tab .st-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .side-tab .st-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    flex: none; visibility: hidden;
+  }
+  .side-tab.dirty .st-dot { visibility: visible; }
+  .side-tab .st-close {
+    border: none; background: none; color: var(--muted); cursor: pointer;
+    font: 13px/1 -apple-system, sans-serif; padding: 0 2px; border-radius: 4px;
+    visibility: hidden; flex: none;
+  }
+  .side-tab:hover .st-close { visibility: visible; }
+  .side-tab .st-close:hover { color: var(--fg); background: var(--border); }
   /* Workspace roots (multi-folder): bold header row with a close ×. */
   .tree-root-sec { margin-bottom: 2px; }
   .tree-root-head {
@@ -460,7 +493,7 @@
         <path d="M8.75 2v3.5h3.5"/><path d="M8 8v3.2M6.4 9.6h3.2"/>
       </svg>
     </button>
-    <button class="tbtn" id="btn-open" data-tip="열기  ⌘O">
+    <button class="tbtn" id="btn-open" data-tip="파일 열기  ⌘O">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M1.75 4.25h4.1l1.2 1.5h7.2v6.5a1 1 0 0 1-1 1H1.75a1 1 0 0 1-1-1V4.25Z"/>
         <path d="M.9 6.75h14.2"/>
@@ -480,7 +513,7 @@
       </svg>
     </button>
     <div class="tsep"></div>
-    <button class="tbtn" id="btn-pdf" data-tip="HTML로 내보내기  ⌘P">
+    <button class="tbtn" id="btn-pdf" data-tip="HTML로 저장하기">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M8 1.75v7.5"/><path d="M5.25 6.5 8 9.25 10.75 6.5"/>
         <path d="M2.75 10.5V13a1 1 0 0 0 1 1h8.5a1 1 0 0 0 1-1v-2.5"/>
@@ -514,6 +547,8 @@
   </header>
   <div id="main">
     <aside id="sidebar">
+      <div id="side-tabs-head">열린 문서</div>
+      <div id="side-tabs"></div>
       <div id="sidebar-head">
         <span id="sidebar-root">탐색기</span>
         <button id="sidebar-addbtn" title="폴더 열기 (여러 개 가능)">＋</button>
@@ -528,6 +563,7 @@
     <button data-snip="table"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6.5h12M6.5 6.5v6.5"/></svg></span>표</button>
     <button data-snip="tabset"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="12" height="7" rx="1.5"/><path d="M4.2 6V4.2h3.4V6"/></svg></span>탭셋</button>
     <button data-snip="code"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4.5 3 8l3 3.5"/><path d="M10 4.5 13 8l-3 3.5"/></svg></span>코드 블록</button>
+    <button data-snip="image"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><circle cx="5.6" cy="6.4" r="1.1"/><path d="M2 11.2 5.5 8l2.8 2.4L11 8l3 3"/></svg></span>이미지</button>
     <button data-snip="draw"><span class="mi"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 2.5 13.5 5.5 6 13l-3.5.5L3 10z"/><path d="M9 4 12 7"/></svg></span>낙서</button>
   </div>
 
@@ -727,6 +763,8 @@ if (window.__TAURI__) {
     resolve_asset: (src) => invoke("resolve_asset", { src }),
     paste_image: () => invoke("paste_image"),
     save_drawing: (dataUrl) => invoke("save_drawing", { dataurl: dataUrl }),
+    // Rust에는 import_image가 없음 — 실패 시 데이터 URL 내장으로 폴백.
+    import_image: (dataUrl, ext) => invoke("import_image", { dataurl: dataUrl, ext }).catch(() => ({ path: dataUrl })),
     open_url: (url) => invoke("open_url", { url }),
     export_html: (html, name) => invoke("export_html", { html, name }),
   } };
@@ -762,13 +800,13 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
     return i > 0 ? dirHandles.get(path.slice(0, i)) : null;
   };
   const toDataURL = (blob) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob); });
-  const saveAttachmentWeb = async (blob, prefix) => {
+  const saveAttachmentWeb = async (blob, prefix, ext = "png") => {
     const dir = parentDirOf(activePath);
     if (dir) {
       try {
         const att = await dir.getDirectoryHandle("attachments", { create: true });
         const d = new Date(), p = (n) => String(n).padStart(2, "0");
-        const name = `${prefix}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${String(d.getMilliseconds()).padStart(3, "0")}.png`;
+        const name = `${prefix}-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}-${String(d.getMilliseconds()).padStart(3, "0")}.${ext}`;
         const fh = await att.getFileHandle(name, { create: true });
         const w = await fh.createWritable(); await w.write(blob); await w.close();
         return { path: "attachments/" + name };
@@ -899,6 +937,12 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
         return saveAttachmentWeb(blob, "draw");
       } catch (_) { return { path: dataurl }; }  // worst case: embed as-is
     },
+    import_image: async (dataurl, ext) => {
+      try {
+        const blob = await (await fetch(dataurl)).blob();
+        return saveAttachmentWeb(blob, "image", ext || "png");
+      } catch (_) { return { path: dataurl }; }
+    },
     open_url: async (url) => { if (/^https?:/.test(url)) window.open(url, "_blank"); return { opened: true }; },
     export_html: async (html, name) => {
       // The export is already self-contained → download it as a file.
@@ -907,12 +951,17 @@ if (!window.__TAURI__) window.addEventListener("DOMContentLoaded", () => setTime
       a.href = URL.createObjectURL(blob); a.download = name || "document.html";
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      return { saved: true, path: name };
+      return { saved: true, path: name, web: true };
     },
   } };
   // Web mode has no folder access from a single-file open, so the explorer
   // sidebar would only ever show its empty state — hide it entirely.
   document.documentElement.classList.add("qv-web");
+  // 봉인된 버튼(흐림 + 클릭 시 "맥 앱 전용" 토스트)은 툴팁도 이유를 말해준다 —
+  // 동작하지 않을 단축키를 광고하지 않도록. (버튼은 disabled가 아니어서 hover
+  // 이벤트가 살아 있고, 툴팁은 그대로 뜬다 — docs/UI-NOTES.md #1 참고.)
+  document.getElementById("btn-open").dataset.tip = "파일 열기 — 맥 앱 전용";
+  document.getElementById("btn-save").dataset.tip = "저장 — 맥 앱 전용";
   window.dispatchEvent(new Event("pywebviewready"));
 }, 400));
 </script>
@@ -1278,7 +1327,9 @@ async function doExport() {
   const name = (title || "document").replace(/[\/\\:*?"<>|]/g, "_").slice(0, 80) + ".html";
   try {
     const r = await api().export_html(html, name);
-    if (r && r.saved) flash("내보냄 — " + describePath(r.path));
+    if (r && r.saved) flash(r.web
+      ? "다운로드 폴더에 저장됨 — " + r.path
+      : "내보냄 — " + describePath(r.path));
     else if (r && r.error) flash("내보내기 실패: " + r.error);
   } catch (e) { flash("내보내기 실패: " + e); }
 }
@@ -1327,12 +1378,37 @@ function renderTabs() {
     el.onmousedown = (e) => { if (e.target === close) return; switchTo(t.id); };
     host.appendChild(el);
   }
+  renderSideTabs();
+}
+// Vertical tabs (sidebar "열린 문서") — same data, list layout. Long titles fit,
+// many docs stay scannable; the horizontal strip above stays for muscle memory.
+function renderSideTabs() {
+  const host = document.getElementById("side-tabs");
+  if (!host) return;
+  host.innerHTML = "";
+  document.getElementById("side-tabs-head").style.display = tabs.length ? "" : "none";
+  for (const t of tabs) {
+    const el = document.createElement("div");
+    el.className = "side-tab" + (t.id === activeId ? " active" : "") + (isDirty(t) ? " dirty" : "");
+    el.dataset.id = t.id;
+    el.title = t.path || t.title;
+    const dot = document.createElement("span"); dot.className = "st-dot"; el.appendChild(dot);
+    const name = document.createElement("span"); name.className = "st-name"; name.textContent = t.title; el.appendChild(name);
+    const close = document.createElement("button");
+    close.className = "st-close"; close.textContent = "×"; close.title = "닫기";
+    close.onclick = (e) => { e.stopPropagation(); closeTab(t.id); };
+    el.appendChild(close);
+    el.onmousedown = (e) => { if (e.target === close) return; switchTo(t.id); };
+    host.appendChild(el);
+  }
 }
 // Cheap update of just the active tab's dirty dot (avoids a full rebuild per keystroke).
 function refreshActiveDirty() {
   const t = activeTab(); if (!t) return;
   const el = document.querySelector('.tab[data-id="' + t.id + '"]');
   if (el) el.classList.toggle("dirty", isDirty(t));
+  const sel = document.querySelector('.side-tab[data-id="' + t.id + '"]');
+  if (sel) sel.classList.toggle("dirty", isDirty(t));
 }
 
 function switchTo(id) {
@@ -1426,6 +1502,11 @@ function flashAutosaved() {
 }
 async function doAutosave(expectedTabId = activeId) {
   const t = activeTab(); if (!t) return;
+  if (isWebMode()) {
+    // Web: no silent file writes — snapshot into the recent-docs shelf instead.
+    if (t.id === expectedTabId && isDirty(t)) recentSaveDoc(titleHint(ed.getValue()) || t.title, ed.getValue());
+    return;
+  }
   // The user may have switched tabs during the debounce. The backend's save
   // target is the active tab, so saving here would write the wrong document.
   if (t.id !== expectedTabId) return;
@@ -1501,11 +1582,17 @@ function insertBlock(key) {
   view.focus();
 }
 
+function isWebMode() { return document.documentElement.classList.contains("qv-web"); }
+function flashMacOnly() {
+  flash("이 기능은 맥 앱에서 제공됩니다 — github.com/guebin/pururum");
+}
 async function doOpen() {
+  if (isWebMode()) { flashMacOnly(); return; }
   try { const s = await api().open_file(); if (s) addTab(s); }
   catch (e) { console.error("open failed", e); }
 }
 async function doSave() {
+  if (isWebMode()) { flashMacOnly(); return; }
   const t = activeTab(); if (!t) return;
   const text = ed.getValue();
   try {
@@ -1608,7 +1695,39 @@ async function renderRoots() {
   }
   markActiveInTree();
 }
+/* ---- Web recent docs (localStorage) ------------------------------------ */
+const RECENT_KEY = "qv-recent-docs";
+function recentLoad() { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch (_) { return []; } }
+function recentSaveDoc(title, text) {
+  if (!isWebMode()) return;
+  const list = recentLoad().filter((d) => d.title !== title || d.text !== text);
+  list.unshift({ title: title || "제목 없음", text, ts: Date.now() });
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 20))); } catch (_) {}
+  renderWebRecent();
+}
+function renderWebRecent() {
+  if (!isWebMode()) return;
+  const tree = document.getElementById("sidebar-tree");
+  document.getElementById("sidebar-root").textContent = "최근 문서";
+  tree.innerHTML = "";
+  const list = recentLoad();
+  if (!list.length) {
+    tree.innerHTML = '<div class="sidebar-empty" style="padding:18px 12px;color:var(--muted);font:12px -apple-system,sans-serif">최근 문서가 여기 쌓입니다.<br>파일/폴더 열기는 <b>맥 앱</b>에서 제공됩니다.</div>';
+    return;
+  }
+  for (const d of list) {
+    const el = document.createElement("div");
+    el.className = "side-tab";
+    el.title = new Date(d.ts).toLocaleString();
+    el.innerHTML = '<span class="st-dot"></span>';
+    const nm = document.createElement("span"); nm.className = "st-name"; nm.textContent = d.title;
+    el.appendChild(nm);
+    el.onmousedown = () => addTab({ text: d.text, title: d.title, path: "" });
+    tree.appendChild(el);
+  }
+}
 function renderEmptySidebar() {
+  if (isWebMode()) { renderWebRecent(); return; }
   const tree = document.getElementById("sidebar-tree");
   tree.innerHTML = "";
   const box = document.createElement("div"); box.className = "sidebar-empty";
@@ -2180,7 +2299,7 @@ const HELP_MD = [
   '## 파일', '',
   '| 동작 | 단축키 | 설명 |',
   '| --- | :---: | --- |',
-  '| 열기 | ⌘O | `.qmd` / `.md` 파일 열기 |',
+  '| 파일 열기 | ⌘O | `.qmd` / `.md` 파일 열기 |',
   '| 저장 | ⌘S | 현재 문서 저장 |',
   '| 새 문서 | ⌘N | 빈 문서 만들기 |',
   '| HTML 내보내기 | ⌘P | 문서를 자체 완결 .html 한 파일로 저장 |', '',
@@ -2271,11 +2390,28 @@ insertMenu.querySelectorAll("button[data-snip]").forEach((b) => {
   b.onclick = () => {
     closeInsertMenu();
     if (b.dataset.snip === "draw") openDrawModal();
+    else if (b.dataset.snip === "image") imagePicker.click();
     else insertBlock(b.dataset.snip);
   };
 });
 document.addEventListener("click", (e) => {
   if (e.target !== insertBtn && !insertBtn.contains(e.target) && !insertMenu.contains(e.target)) closeInsertMenu();
+});
+
+// 삽입 → 이미지: 파일을 골라 attachments/에 복사하고 마크다운을 삽입한다.
+// (웹에서 폴더 핸들이 없으면 붙여넣기와 동일하게 문서 안에 내장된다.)
+const imagePicker = Object.assign(document.createElement("input"), { type: "file", accept: "image/*" });
+imagePicker.addEventListener("change", async () => {
+  const f = imagePicker.files && imagePicker.files[0];
+  imagePicker.value = "";
+  if (!f) return;
+  const dataUrl = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
+  const ext = ((/\.([A-Za-z0-9]{1,5})$/.exec(f.name) || [])[1] || "png").toLowerCase();
+  let r = await api().import_image(dataUrl, ext);
+  // 제목 없는 문서면 먼저 파일을 만들어 주고 재시도 (이미지 붙여넣기와 같은 흐름).
+  if (r && r.error && !r.path && await ensureDocSaved()) r = await api().import_image(dataUrl, ext);
+  if (r && r.path) { insertImageMarkdown(r.path); flash("이미지 삽입됨 — " + describePath(r.path)); }
+  else if (r && r.error) flash(r.error);
 });
 
 /* ============ 그림판 (canvas paint popup) ============ */
@@ -2403,6 +2539,9 @@ reloadBtn.onclick = () => {
 document.addEventListener("click", (e) => {
   const a = e.target.closest("a[href]");
   if (!a) return;
+  // Programmatic download anchors (web export) must pass through — swallowing
+  // them here was why web export silently produced no file.
+  if (a.hasAttribute("download")) return;
   e.preventDefault();
   const href = a.getAttribute("href") || "";
   if (/^https?:/i.test(href)) { try { api().open_url(href); } catch (_) {} }
@@ -2431,7 +2570,6 @@ document.addEventListener("keydown", (e) => {
   if (k === "n") { e.preventDefault(); doNew(); }
   else if (k === "o") { e.preventDefault(); doOpen(); }
   else if (k === "s") { e.preventDefault(); doSave(); }
-  else if (k === "p") { e.preventDefault(); doExport(); }
 });
 
 async function pollLoop() {

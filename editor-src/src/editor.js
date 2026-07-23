@@ -288,6 +288,8 @@ function enhanceTableWidget(el, view, widget) {
   if (firstPipe < 0 || lastPipe < firstPipe) return;
   const pipeText = srcLines.slice(firstPipe, lastPipe + 1).join("\n");
   const centered = /^\s*:{3,}\s*\{[^}]*\.center/.test(widget.src);
+  if (centered) el.classList.add("qv-tbl-center");
+  else if (/^\s*:{3,}\s*\{[^}]*\.right/.test(widget.src)) el.classList.add("qv-tbl-right");
   // Pandoc table caption (": Caption") anywhere outside the pipe rows.
   let caption = "";
   for (const l of srcLines) { const m = /^\s*:\s+(\S.*)$/.exec(l); if (m) { caption = m[1].trim(); break; } }
@@ -438,6 +440,12 @@ class BlockWidget extends WidgetType {
     const el = document.createElement("div");
     el.className = "qv-block";
     el.setAttribute("contenteditable", "false");
+    // flow-root fences the children's margins inside the widget box. Without
+    // it CM measures the widget shorter than it PAINTS (offsetHeight excludes
+    // escaping margins), the height map drifts for everything below, and
+    // posAtCoords clamps to the doc end — drag-select died under any block
+    // widget (every doc starts with the front-matter block…).
+    el.style.display = "flow-root";
     el.innerHTML = (HOST[this.kind] || HOST.renderBlock)(this.src);
     HOST.resolveImages(el);
     HOST.typeset(el);
@@ -882,11 +890,34 @@ const theme = EditorView.theme({
   ".cm-scroller": {
     fontFamily: "'Noto Serif','NanumMyeongjo','Nanum Myeongjo',serif",
     fontSize: "16px", lineHeight: "1.5", overflow: "auto",
+    backgroundColor: "#f3f0e4",   // desk behind the paper card
+    // Desk gutter around the sheet. MUST be padding here, not margin on
+    // .cm-content: CM's selection layer shares the scroller origin, so a
+    // content margin shifts text but not the highlight rects — ⌘A painted
+    // outside the paper.
+    // Top/bottom kept close (20/24) — the old 48px bottom made the desk feel
+    // bottom-heavy ("아래쪽만 여백이 많은 느낌").
+    padding: "20px 24px 24px 20px",
   },
   // Left-aligned column (was centered — the floating middle block felt wrong
   // when the sidebar is hidden). maxWidth keeps lines readable; a fixed left
   // pad gives the text a stable start line.
-  ".cm-content": { padding: "44px 8px 200px 48px", maxWidth: "868px", margin: "0", caretColor: "#ff6f61" },
+  // "종이 카드" boundary (design pick B): the document column is a sheet of
+  // paper — slightly lighter than the desk behind it, lifted by a soft shadow.
+  // A real sheet of paper: rounded on ALL sides, floating on the desk with a
+  // gutter around it (the half-rounded right-edge-only card read as unfinished).
+  // NOTE: no minHeight/boxSizing — CM6's coordinate math assumes content-box
+  // (border-box collapsed posAtCoords to the doc end and killed drag-select).
+  // Content stays TRANSPARENT: drawSelection paints its highlight layer at
+  // z-index -2 (behind the content), so any background here would hide every
+  // selection — ⌘A looked dead. The paper sheet is a separate underlay div
+  // at z-index -3 (created in create()), sized to match this element.
+  ".cm-content": {
+    // Bottom pad is breathing room after the last line; 120px read as a huge
+    // empty tail on short docs, 64px still keeps the end off the paper edge.
+    padding: "44px 28px 64px 48px", maxWidth: "868px",
+    caretColor: "#ff6f61",
+  },
   // CM's default 6px left padding on lines pushes plain text 6px right of block
   // widgets (front matter, callouts, tables), making left edges look misaligned.
   // Zero it so every element shares the same left margin.
@@ -900,8 +931,29 @@ const theme = EditorView.theme({
   // .cm-selectionLayer .cm-selectionBackground" (0,5,0). A plain
   // ".cm-selectionBackground" override (0,1,0) loses to it, so we MUST match the
   // same selector depth for our peach to win.
-  "& > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { backgroundColor: "#ffe1dc" },
-  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { backgroundColor: "#ffd5ce" },
+  // Clip the highlight to the TEXT column: drawSelection's full-line rects
+  // span the whole content box including the horizontal padding, which put
+  // peach outside the text boundaries (독자가 그은 선 밖). The inset values
+  // mirror .cm-content's left/right padding.
+  // NO layer slab at all. drawSelection's merged rectangles read as one huge
+  // pink wall on real documents (blank lines, widget rows, padding included).
+  // The look the user approved is the NATIVE per-glyph selection hugging the
+  // text — so the layer is hidden and ::selection paints everything.
+
+  ".cm-content ::selection": { backgroundColor: "rgba(255,111,97,.22)" },
+  ".cm-content::selection": { backgroundColor: "rgba(255,111,97,.22)" },
+  // Widgets (front-matter title block, tables, callouts…) are non-editable
+  // islands where the BROWSER paints its own ::selection (the title showed
+  // system blue). Tint it the SAME translucent coral as the layer wash so
+  // every selected thing — text, table cells, title — reads as one system.
+  ".cm-content .qv-block ::selection, .cm-content .qv-block::selection": { backgroundColor: "rgba(255,111,97,.22)" },
+  ".cm-content .qv-math ::selection, .cm-content .qv-math::selection": { backgroundColor: "rgba(255,111,97,.22)" },
+  ".cm-content .qv-imgwrap ::selection": { backgroundColor: "rgba(255,111,97,.22)" },
+  // Translucent wash, not an opaque slab: a full-document ⌘A paints one big
+  // merged rectangle (blank lines + widget rows included), and solid peach
+  // read as a heavy pink wall on real documents.
+  "& > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { backgroundColor: "rgba(255,111,97,.14)", borderRadius: "3px" },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { backgroundColor: "rgba(255,111,97,.22)", borderRadius: "3px" },
   "::selection": { backgroundColor: "#ffe1dc" },
 
   // live-preview element styling (matches .qdoc in doc.css)
@@ -962,7 +1014,12 @@ const theme = EditorView.theme({
   ".qv-block": { margin: "0", position: "relative" },
   // A table block shrinks to the table's width so its × badge lands on the
   // table's own top-right corner, not far out at the full-line right edge.
+  // That shrink-wrap also means the ::: {.center}/{.right} wrapper INSIDE the
+  // widget has no room to move the table — so alignment is applied to the
+  // widget box itself (classes set by enhanceTableWidget from the src).
   ".qv-block.qv-hastable": { width: "fit-content", maxWidth: "100%" },
+  ".qv-block.qv-hastable.qv-tbl-center": { marginLeft: "auto", marginRight: "auto" },
+  ".qv-block.qv-hastable.qv-tbl-right": { marginLeft: "auto" },
   // Empty cells must stay clickable: give them real size and an invisible
   // filler so a fresh table isn't a stack of hairlines.
   ".qv-hastable": { cursor: "pointer" },
@@ -1050,11 +1107,6 @@ function create(parent, opts = {}) {
     run: () => { opts.onSave && opts.onSave(); return true; },
     preventDefault: true,
   };
-  const pdfKey = {
-    key: "Mod-p",
-    run: () => { opts.onPdf && opts.onPdf(); return true; },
-    preventDefault: true,
-  };
   const openKey = {
     key: "Mod-o",
     run: () => { opts.onOpen && opts.onOpen(); return true; },
@@ -1124,7 +1176,11 @@ function create(parent, opts = {}) {
     doc: doc || "",
     extensions: [
       history(),
-      drawSelection(),
+      // NO drawSelection: its base theme forces native ::selection transparent
+      // (!important) and paints merged slab rectangles instead. The approved
+      // look is the native per-glyph selection. (Its removal was tried before
+      // and wrongly blamed for dead clicks near widgets — that was the
+      // flow-root height-map bug, fixed today.)
       indentOnInput(),
       bracketMatching(),
       markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [GFM] }),
@@ -1134,7 +1190,7 @@ function create(parent, opts = {}) {
       livePreview,
       theme,
       EditorView.lineWrapping,
-      keymap.of([saveKey, pdfKey, openKey, newKey, ...arrowKeys, indentWithTab, ...defaultKeymap, ...historyKeymap]),
+      keymap.of([saveKey, openKey, newKey, ...arrowKeys, indentWithTab, ...defaultKeymap, ...historyKeymap]),
       EditorView.updateListener.of((u) => { if (u.docChanged && opts.onChange) opts.onChange(view.state.doc.toString()); }),
       // Caret-redraw fix. On a doc change, a `$..$` source can become a
       // replace-widget of a different width. CodeMirror updates coordsAtPos
@@ -1161,9 +1217,42 @@ function create(parent, opts = {}) {
   });
 
   const view = new EditorView({ state: makeState(opts.doc), parent });
-  // Web fonts (base64 serif) apply after first layout and shift every glyph
-  // metric; remeasure once they're in so click→position mapping stays exact.
-  try { document.fonts.ready.then(() => view.requestMeasure()); } catch (_) {}
+  // Paper-sheet underlay: lives BEHIND the selection layer (z -3 < -2) so the
+  // peach highlight stays visible on top of the paper. Absolutely positioned
+  // inside the scroller (scrolls with content); size tracks the content box.
+  {
+    const paper = document.createElement("div");
+    paper.className = "qv-paper";
+    Object.assign(paper.style, {
+      position: "absolute", top: "20px", left: "20px", zIndex: "-3",
+      background: "#fdfdf9", borderRadius: "12px", pointerEvents: "none",
+      boxShadow: "0 1px 3px rgba(90,80,60,.10), 0 8px 26px rgba(90,80,60,.09)",
+    });
+    view.scrollDOM.appendChild(paper);
+    const sync = () => {
+      const c = view.contentDOM;
+      paper.style.left = c.offsetLeft + "px";
+      paper.style.top = c.offsetTop + "px";
+      paper.style.width = c.offsetWidth + "px";
+      paper.style.height = c.offsetHeight + "px";
+    };
+    try { new ResizeObserver(sync).observe(view.contentDOM); } catch (_) { setInterval(sync, 500); }
+    sync();
+  }
+  // Web fonts (base64 serif) apply after first layout and grow every line —
+  // especially the tall front-matter title block. CM's height map does NOT
+  // refresh via requestMeasure (measured empirically), so coordinates below
+  // the growth point clamp to the doc end: drag-select died on later lines.
+  // A full setState is the only call that re-reads every line height; state
+  // identity is preserved so selection/history are untouched.
+  const reflow = () => {
+    try {
+      const st = view.scrollDOM.scrollTop;
+      view.setState(view.state);
+      view.scrollDOM.scrollTop = st;
+    } catch (_) {}
+  };
+  try { document.fonts.ready.then(() => setTimeout(reflow, 50)); } catch (_) {}
 
   // Selection/caret reflow after OUT-OF-BAND height changes. drawSelection
   // positions its rectangles from CM's cached line-height map, which only

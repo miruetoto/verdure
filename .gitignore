@@ -6,6 +6,13 @@ __pycache__/
 
 # Editor bundle build (bundle output is committed; deps are not)
 editor-src/node_modules/
+editor-milkdown/node_modules/
+editor-vditor/node_modules/
+electron-shell/node_modules/
+
+# Full working-copy snapshots left by Codex sessions — never commit
+pururum-cm-shared/
+pururum-stabilize/
 
 # Generated export page (written at runtime for PDF)
 quarto_viewer/static/_export.html

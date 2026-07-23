@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("pywebview", {
     resolve_asset: (src) => inv("resolve_asset", { src }),
     paste_image: () => inv("paste_image"),
     save_drawing: (dataUrl) => inv("save_drawing", { dataurl: dataUrl }),
+    import_image: (dataUrl, ext) => inv("import_image", { dataurl: dataUrl, ext }),
     open_url: (url) => inv("open_url", { url }),
     export_html: (html, name) => inv("export_html", { html, name }),
   },

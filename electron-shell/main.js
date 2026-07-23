@@ -19,7 +19,7 @@ author: "환영합니다 👋"
 
 ## 사용법
 
-- **열기…**(⌘O)로 \`.qmd\` / \`.md\` 파일을 엽니다.
+- **파일 열기…**(⌘O)로 \`.qmd\` / \`.md\` 파일을 엽니다.
 - 왼쪽 **에디터**에서 편집하면 미리보기가 **즉시** 갱신됩니다.
 - **⌘S** 로 저장, **출력** 버튼으로 단일 HTML로 내보냅니다.
 
@@ -48,11 +48,11 @@ const sanitizeName = (s) => {
   const t = String(s || "").replace(/[/\\:*?"<>|]/g, " ").trim();
   return t ? t.slice(0, 60) : "제목없음";
 };
-const saveAttachment = (bytes, prefix) => {
+const saveAttachment = (bytes, prefix, ext = "png") => {
   if (!st.path) return { error: "이미지를 저장하려면 먼저 문서를 저장하세요 (⌘S)" };
   const dir = path.join(path.dirname(st.path), "attachments");
   try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { return { error: e.message }; }
-  const name = `${prefix}-${Math.floor(Date.now() / 1000)}.png`;
+  const name = `${prefix}-${Math.floor(Date.now() / 1000)}.${ext}`;
   try { fs.writeFileSync(path.join(dir, name), bytes); } catch (e) { return { error: e.message }; }
   return { path: `attachments/${name}` };
 };
@@ -156,6 +156,13 @@ const H = {
     const m = /^data:[^,]*base64,(.*)$/.exec(dataurl || "");
     if (!m) return { error: "잘못된 이미지 데이터" };
     return saveAttachment(Buffer.from(m[1], "base64"), "draw");
+  },
+  // 삽입 → 이미지: a picked image file arrives as a data URL; keep its format.
+  import_image: (_e, { dataurl, ext }) => {
+    const m = /^data:[^,]*base64,(.*)$/.exec(dataurl || "");
+    if (!m) return { error: "잘못된 이미지 데이터" };
+    const safe = /^[a-z0-9]{1,5}$/.test(ext || "") ? ext : "png";
+    return saveAttachment(Buffer.from(m[1], "base64"), "image", safe);
   },
   paste_image: () => {
     const t = clipboard.readText();

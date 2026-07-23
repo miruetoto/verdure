@@ -172,3 +172,24 @@
 MathJax를 미리 로드해 폴백 경로가 달랐음. Chromium(Electron)에서 재현이 가능해져
 위젯 내용 덤프(`mjxInWidget:false`)로 확정. 수정 후: 스페이스 즉시 렌더,
 캐럿 갭 36px→4px. 교훈: **옵션 전달 체인은 grep으로 끝까지 확인할 것.**
+
+### 미결 일괄 정리 (2026-07-24 01:30, 미커밋)
+
+- **표 가운데 정렬 버그 규명·수정**: `::: {.center}` CSS(`.qdiv.center > table`)는
+  멀쩡했으나 `.qv-block.qv-hastable { width: fit-content }`(× 배지를 표 모서리에
+  붙이는 shrink-wrap)가 래퍼 div까지 표 폭으로 줄여 **가운데 정렬할 공간 자체가
+  없었다**. 수정: 정렬을 위젯 박스에 직접 적용 — enhanceTableWidget이 src에서
+  `.center`/`.right`를 읽어 `qv-tbl-center/right` 클래스 부여, 테마에서 auto 마진.
+  실측: leftGap 388 / rightGap 368 (대칭 ✓).
+- **"표 클릭해도 팝업 안 뜸" 신고** = 스테일 앱(개발 Electron 죽고 구 패키지 실행).
+  현행 소스는 헤드리스·실창 Electron 모두 클릭→모달 열림 확인. 새 창 재기동.
+- **삽입 → 이미지** 추가: 메뉴에 이미지 항목(파일 선택) → dataURL → 새 IPC
+  `import_image`(main.js, 확장자 보존해 attachments/image-*.ext) + preload +
+  웹 어댑터(saveAttachmentWeb ext 지원, 폴더 없으면 내장) + Tauri 폴백(내장).
+  제목없는 문서면 ensureDocSaved 후 재시도(붙여넣기와 동일 흐름).
+- **아래 여백 과다**("아래쪽만 여백이 많은 느낌") 수정: 데스크 하단 48→24px,
+  종이 내부 하단 120→64px. 실측 위 20 / 아래 24 균형.
+- **웹 봉인 버튼 툴팁**: 파일 열기/저장 → "— 맥 앱 전용" 문구로 교체 (버튼이
+  disabled가 아니라 hover 살아있음 — UI-NOTES #1 함정 해당 없음).
+- 검증: {geo 20/24, imageBtn ✓, import_image ✓, centered ✓, modalOpen ✓, errs 0}
+  + Electron IPC 라운드트립 ✓. 번들 재빌드, Electron 재기동 완료.
