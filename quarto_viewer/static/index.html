@@ -1294,10 +1294,12 @@ function renderFrontmatter(src) {
     return '<div class="fmp-row"><span class="fmp-ico">' + ico + '</span><span class="fmp-key">'
       + escapeHtml(k) + '</span><span class="fmp-val">' + val + "</span></div>";
   }).join("");
+  // title alone duplicates the big heading — Properties appears only when
+  // there is something more to show.
+  const others = rows.some((r) => r[0].toLowerCase() !== "title");
   return '<div class="qdoc"><div class="frontmatter fm-props">'
     + '<div class="title">' + escapeHtml(title || "제목 없음") + "</div>"
-    + '<div class="fmp-head">Properties</div>'
-    + '<div class="fmp-list">' + body + "</div>"
+    + (others ? '<div class="fmp-head">Properties</div><div class="fmp-list">' + body + "</div>" : "")
     + "</div></div>";
 }
 
