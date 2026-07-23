@@ -1,6 +1,6 @@
 cask "pururum" do
-  version "1.1.0"
-  sha256 "5b3c0744a73926a573d05ede9c6b11340786f025ca9f271cc6ecbdd177a377b4"
+  version "2.1.0"
+  sha256 "ed485a4d7a8a39df6014943117205043aaa2bbadaf5b488ccec8a83a77978acd"
 
   url "https://github.com/guebin/pururum/releases/latest/download/Pururum.dmg",
       verified: "github.com/guebin/pururum/"

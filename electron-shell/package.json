@@ -1,6 +1,6 @@
 {
   "name": "pururum",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Quarto/Markdown live-preview editor",
   "main": "main.js",
   "scripts": {
