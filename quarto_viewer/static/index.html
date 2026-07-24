@@ -297,27 +297,25 @@
   .tbl-hint { font: 400 11px/1.3 -apple-system, system-ui, sans-serif; color: var(--muted); }
   /* Uniform object delete badge: hover any object (image/table/tabset) → × */
   .qv-obj { position: relative; }
-  /* Badges perch on the object's top-right corner, half outside the box
-     (사용자 시안) — clear of callout chevrons and header content alike. */
-  .qv-delx {
-    position: absolute; top: -10px; right: -10px; z-index: 6;
-    width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
-    background: #ff0039; color: #fff; font: 700 15px/22px -apple-system, system-ui, sans-serif;
-    text-align: center; cursor: pointer; opacity: 0; transition: opacity .12s;
-    box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  /* Object badge TAB (사용자 시안): the hover outline grows a little tab at
+     its top-right corner holding [⧉ ×] — like a file-folder tab. Positioned
+     per-object at hover time (editor.js seats it on the outlined box). */
+  .qv-badges {
+    position: absolute; top: -25px; right: 12px; z-index: 6;
+    display: flex; align-items: center; gap: 4px; padding: 3px 7px;
+    background: #fdfdf9; border: 2px solid #ffd5ce; border-bottom: none;
+    border-radius: 9px 9px 0 0;
+    opacity: 0; pointer-events: none; transition: opacity .12s;
   }
-  .qv-obj:hover .qv-delx { opacity: 1; }
-  .qv-delx:hover { background: #d0002f; }
-  /* ⧉ copy badge — sits left of the ×, same hover reveal */
-  .qv-copyx {
-    position: absolute; top: -10px; right: 16px; z-index: 6;
-    width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
-    background: #6c757d; color: #fff; font: 600 12px/22px -apple-system, system-ui, sans-serif;
-    text-align: center; cursor: pointer; opacity: 0; transition: opacity .12s;
-    box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  .qv-obj:hover .qv-badges { opacity: 1; pointer-events: auto; }
+  .qv-badges button {
+    width: 19px; height: 19px; padding: 0; border: none; border-radius: 50%;
+    color: #fff; text-align: center; cursor: pointer;
   }
-  .qv-obj:hover .qv-copyx { opacity: 1; }
+  .qv-copyx { background: #6c757d; font: 600 11px/19px -apple-system, system-ui, sans-serif; }
   .qv-copyx:hover { background: #4d565e; }
+  .qv-delx { background: #ff0039; font: 700 13px/19px -apple-system, system-ui, sans-serif; }
+  .qv-delx:hover { background: #d0002f; }
   /* live rendered preview inside object modals ("실제 들어가는 모양") */
   .obj-preview {
     border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg);

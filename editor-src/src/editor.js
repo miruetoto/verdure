@@ -102,16 +102,18 @@ function imageDocOps(view, dom, raw) {
 }
 
 // Every fixed object (image, table, tabset, …) gets the same hover affordance:
-// copy (⧉, puts the object's markdown on the clipboard) and delete (×) badges
-// at the top-right. The object-specific popup is what differs — copying and
-// deletion are uniform.
+// a little TAB jutting out of the outline's top-right corner (사용자 시안 —
+// 파일 폴더 탭처럼) holding copy (⧉, markdown → clipboard) and delete (×).
+// The object-specific popup is what differs — copying/deletion are uniform.
 function addDeleteBadge(el, onDelete, src) {
   el.classList.add("qv-obj");
+  const tray = document.createElement("span");
+  tray.className = "qv-badges";
   const btn = (cls, txt, title, fn) => {
     const b = document.createElement("button");
     b.className = cls; b.type = "button"; b.title = title; b.textContent = txt;
     b.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
-    el.appendChild(b);
+    tray.appendChild(b);
   };
   if (src != null) btn("qv-copyx", "⧉", "복사", () => {
     const text = String(src);
@@ -124,6 +126,16 @@ function addDeleteBadge(el, onDelete, src) {
     if (HOST.flash) HOST.flash("오브젝트 복사됨 — ⌘V로 붙여넣기");
   });
   btn("qv-delx", "×", "삭제", onDelete);
+  el.appendChild(tray);
+  // Seat the tab flush on the OUTLINED box's top-right corner. Re-measured on
+  // every hover (images load late, zoom changes, callouts fold).
+  el.addEventListener("mouseenter", () => {
+    const target = el.querySelector("table, .tabset, .callout, .frontmatter, pre, mjx-container") || el;
+    const er = el.getBoundingClientRect(), tr = target.getBoundingClientRect();
+    if (!tr.width) return;
+    tray.style.top = Math.round(tr.top - er.top - 25) + "px";
+    tray.style.right = Math.round(er.right - tr.right + 12) + "px";
+  });
 }
 
 class ImageWidget extends WidgetType {
