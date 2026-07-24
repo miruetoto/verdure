@@ -3,6 +3,9 @@ const { spawnSync } = require("node:child_process");
 const tests = [
   "tabs_test.cjs",
   "visual_test.cjs",
+  "object_ring_test.cjs",
+  "align_test.cjs",
+  "code_copy_scroll_test.cjs",
   "interact_test.cjs",
   "insert_test.cjs",
   "sidebar_test.cjs",

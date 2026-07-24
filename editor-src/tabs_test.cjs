@@ -1,5 +1,6 @@
 // Tab behavior regression test: multi-document tabs, switching, dirty tracking,
-// close/dedupe, welcome fallback, and QV.openPath (single-instance delivery).
+// close/dedupe, welcome fallback, blank startup, and QV.openPath
+// (single-instance delivery).
 const puppeteer = require("puppeteer-core");
 const http = require("http"); const path = require("path"); const fs = require("fs");
 const STATIC = path.resolve(__dirname, "../quarto_viewer/static");
@@ -126,18 +127,80 @@ const mkdoc = (title, body) => `---\ntitle: ${title}\n---\n\n${body}\n`;
   await pause();
   if (await page.evaluate(() => !ed.getValue().includes("alpha-external"))) bad.push("external change to A not reloaded");
 
-  // 8) Close a tab → removed; closing all leaves a welcome tab.
+  // 8) Close a tab → removed; closing all leaves the explicit help fallback.
   const before = (await tabTitles()).length;
   await page.evaluate(() => { const t = [...document.querySelectorAll("#tabs .tab")].find(e => e.querySelector(".tab-name").textContent === "b.qmd"); t.querySelector(".tab-close").click(); });
   await pause();
   titles = await tabTitles();
   if (titles.includes("b.qmd")) bad.push("close did not remove b");
   if (titles.length !== before - 1) bad.push(`close count wrong: ${JSON.stringify(titles)}`);
-  // close remaining → welcome
+  // close remaining → help fallback
   await page.evaluate(() => { document.querySelector("#tabs .tab .tab-close").click(); });
   await pause();
   titles = await tabTitles();
-  if (JSON.stringify(titles) !== JSON.stringify(["환영합니다"])) bad.push(`welcome fallback = ${JSON.stringify(titles)}`);
+  if (JSON.stringify(titles) !== JSON.stringify(["Pururum 도움말"])) {
+    bad.push(`help fallback = ${JSON.stringify(titles)}`);
+  }
+
+  // 9) Launch without a file → an untitled new document, never auto-help.
+  const blankPage = await browser.newPage();
+  await blankPage.evaluateOnNewDocument(() => {
+    window.pywebview = { api: {
+      get_state: async () => ({ text: "", title: "", path: "", folder: null }),
+      read_path: async (path) => ({
+        text: "---\ntitle: Late\n---\n\nopened from Finder\n",
+        title: path.split("/").pop(),
+        path,
+      }),
+      set_active: async () => ({ ok: true }),
+      track: async () => ({ ok: true }),
+      poll: async () => null,
+      resolve_asset: async () => null,
+      paste_image: async () => ({ skipped: "text" }),
+      open_url: async () => ({ opened: true }),
+      open_export: async () => ({ opened: true }),
+    } };
+    window.addEventListener("DOMContentLoaded", () => {
+      setTimeout(() => window.dispatchEvent(new Event("pywebviewready")), 40);
+    });
+  });
+  await blankPage.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: "networkidle0" });
+  await pause(500);
+  const blankBoot = await blankPage.evaluate(() => ({
+    titles: [...document.querySelectorAll("#tabs .tab .tab-name")].map((e) => e.textContent),
+    active: document.querySelector("#tabs .tab.active .tab-name")?.textContent || null,
+    text: ed.getValue(),
+  }));
+  if (JSON.stringify(blankBoot.titles) !== JSON.stringify(["제목 없음"])) {
+    bad.push(`blank boot tabs = ${JSON.stringify(blankBoot.titles)} (기대 [제목 없음])`);
+  }
+  if (blankBoot.active !== "제목 없음") bad.push(`blank boot active = ${blankBoot.active}`);
+  if (blankBoot.text !== "---\ntitle: \"제목 없음\"\n---\n\n") {
+    bad.push(`blank boot template = ${JSON.stringify(blankBoot.text)}`);
+  }
+
+  // A Finder/CLI open delivered just after boot replaces only the untouched
+  // startup tab, so users never get a stray blank beside the requested file.
+  await blankPage.evaluate(() => window.QV.openPath("/late.qmd"));
+  await pause();
+  const lateBootTitles = await blankPage.evaluate(() =>
+    [...document.querySelectorAll("#tabs .tab .tab-name")].map((e) => e.textContent));
+  if (JSON.stringify(lateBootTitles) !== JSON.stringify(["late.qmd"])) {
+    bad.push(`late launch tabs = ${JSON.stringify(lateBootTitles)} (기대 [late.qmd])`);
+  }
+
+  // Likewise, delayed --new-blank replaces the untouched starter rather than
+  // creating two identical blank tabs.
+  await blankPage.reload({ waitUntil: "networkidle0" });
+  await pause(500);
+  await blankPage.evaluate(() => window.QV.newBlank());
+  await pause();
+  const delayedBlankTitles = await blankPage.evaluate(() =>
+    [...document.querySelectorAll("#tabs .tab .tab-name")].map((e) => e.textContent));
+  if (JSON.stringify(delayedBlankTitles) !== JSON.stringify(["제목 없음"])) {
+    bad.push(`delayed blank tabs = ${JSON.stringify(delayedBlankTitles)} (기대 [제목 없음])`);
+  }
+  await blankPage.close();
 
   await browser.close(); server.close();
   if (bad.length) { console.log("❌ 탭 테스트 실패:\n - " + bad.join("\n - ")); process.exit(1); }

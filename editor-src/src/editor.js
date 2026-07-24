@@ -105,7 +105,10 @@ function imageDocOps(view, dom, raw) {
 // a little TAB jutting out of the outline's top-right corner (사용자 시안 —
 // 파일 폴더 탭처럼) holding copy (⧉, markdown → clipboard) and delete (×).
 // The object-specific popup is what differs — copying/deletion are uniform.
-function addDeleteBadge(el, onDelete, src) {
+// `onAlign` (optional, tables + images only) is { get:()=>'center'|'left', toggle:() }.
+// When present it prepends a 정렬 button so the tray reads [정렬][복사][제거]; the five
+// other object kinds pass nothing and their trays are byte-for-byte unchanged.
+function addDeleteBadge(el, onDelete, src, onAlign) {
   el.classList.add("qv-obj");
   const tray = document.createElement("span");
   tray.className = "qv-badges";
@@ -115,6 +118,14 @@ function addDeleteBadge(el, onDelete, src) {
     b.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
     tray.appendChild(b);
   };
+  if (onAlign) {
+    const left = onAlign.get() === "left";
+    // ▤ centred fill vs ▥ vertical fill — the glyph reflects the CURRENT state so
+    // the button reads at a glance; clicking flips to the other.
+    btn("qv-alignx", left ? "▥" : "▤",
+      left ? "왼쪽 정렬 — 클릭하면 가운데" : "가운데 정렬 — 클릭하면 왼쪽",
+      () => onAlign.toggle());
+  }
   if (src != null) btn("qv-copyx", "⧉", "복사", () => {
     const text = String(src);
     try { navigator.clipboard.writeText(text); } catch (_) {
@@ -138,13 +149,26 @@ function addDeleteBadge(el, onDelete, src) {
   ringPath.setAttribute("fill", "none");
   ringPath.setAttribute("stroke", "#ffc9c0");
   ringPath.setAttribute("stroke-width", "2");
+  // Invisible hit strip over the tab band. The tray sits ABOVE the object's
+  // box, so the band between them belonged to nothing hoverable: heading for
+  // the buttons dropped `.qv-obj:hover`, which put the tray straight back to
+  // pointer-events:none and left the buttons unreachable. It spans the FULL
+  // ring width because a hand approaches the tab diagonally — a tray-width
+  // bridge only catches a straight-up approach (측정: 대각선 진입은 트레이보다
+  // 93px 왼쪽에서 상단을 가로지른다).
+  const hit = document.createElementNS(svgNS, "rect");
+  hit.setAttribute("class", "qv-hit");
+  hit.setAttribute("fill", "transparent");
+  hit.setAttribute("x", "0");
+  hit.setAttribute("y", "0");
+  ring.appendChild(hit);
   ring.appendChild(ringPath);
   el.appendChild(ring);
   const positionRing = () => {
     const target = (el.classList.contains("qv-math-block") && el.querySelector("mjx-math"))
       || el.querySelector("table, .tabset, .callout, .frontmatter, pre") || el;
     const er = el.getBoundingClientRect(), tr = target.getBoundingClientRect();
-    if (!tr.width) return;
+    if (!tr.width || !tr.height) return;
     const off = 5, tabH = 26, r = 10, r2 = 8, pad = 2;
     // Rects come back multiplied by the document zoom, but styles we set are
     // in pre-zoom CSS px — divide the measurements or the ring drifts/stretches
@@ -156,19 +180,35 @@ function addDeleteBadge(el, onDelete, src) {
     ring.style.top = Math.round(by - tabH - pad) + "px";
     ring.setAttribute("height", Math.round(bh + tabH + pad * 2));
     // Very narrow targets (short formulas): widen the ring symmetrically to
-    // fit the tab instead of letting the path fold back on itself.
-    const minW = tabW + r + 22;
+    // fit the tab and its rounded shoulder instead of folding the path back.
+    const bodyR = Math.min(r, bh / 2);
+    const tabR = Math.min(r2, tabW / 2, tabH / 2);
+    const joinR = Math.min(10, tabH - tabR);
+    const shoulderGap = 8;
+    const minW = tabW + bodyR + joinR + shoulderGap;
     let bx2 = bx, bw2 = bw;
     if (bw2 < minW) { bx2 -= (minW - bw2) / 2; bw2 = minW; }
     ring.style.left = Math.round(bx2 - pad) + "px";
     ring.setAttribute("width", Math.round(bw2 + pad * 2));
+    // Hit strip: ring top down to the object's top edge, and not one px past
+    // it — at 8px the strip starts eating the content's first row of clicks
+    // (이슬 감사 260724-1137: elementFromPoint → .qv-badges).
+    hit.setAttribute("width", Math.round(bw2 + pad * 2));
+    hit.setAttribute("height", Math.max(0, Math.round(tabH + pad - by)));
     const x0 = pad, y0 = pad, x1 = pad + bw2, yT = pad + tabH, y1 = pad + tabH + bh;
-    const xb = x1 - 10, xa = xb - tabW;
+    // Folder silhouette: the left shoulder eases upward through a true
+    // quarter-circle (horizontal tangent in, vertical tangent out), and the
+    // tab's outer wall sits at the SAME x as the body wall — one uninterrupted
+    // vertical, with no 10px shelf at yT.
+    const xa = x1 - tabW;
     ringPath.setAttribute("d",
-      `M ${x0 + r} ${yT} L ${xa} ${yT} L ${xa} ${y0 + r2} Q ${xa} ${y0} ${xa + r2} ${y0} `
-      + `L ${xb - r2} ${y0} Q ${xb} ${y0} ${xb} ${y0 + r2} L ${xb} ${yT} L ${x1 - r} ${yT} `
-      + `Q ${x1} ${yT} ${x1} ${yT + r} L ${x1} ${y1 - r} Q ${x1} ${y1} ${x1 - r} ${y1} `
-      + `L ${x0 + r} ${y1} Q ${x0} ${y1} ${x0} ${y1 - r} L ${x0} ${yT + r} Q ${x0} ${yT} ${x0 + r} ${yT}`);
+      `M ${x0 + bodyR} ${yT} H ${xa - joinR} `
+      + `A ${joinR} ${joinR} 0 0 0 ${xa} ${yT - joinR} `
+      + `V ${y0 + tabR} A ${tabR} ${tabR} 0 0 1 ${xa + tabR} ${y0} `
+      + `H ${x1 - tabR} A ${tabR} ${tabR} 0 0 1 ${x1} ${y0 + tabR} `
+      + `V ${y1 - bodyR} A ${bodyR} ${bodyR} 0 0 1 ${x1 - bodyR} ${y1} `
+      + `H ${x0 + bodyR} A ${bodyR} ${bodyR} 0 0 1 ${x0} ${y1 - bodyR} `
+      + `V ${yT + bodyR} A ${bodyR} ${bodyR} 0 0 1 ${x0 + bodyR} ${yT} Z`);
     tray.style.right = "auto";  // belt & braces vs. any stray CSS `right`
     tray.style.left = Math.round(bx2 - pad + xa + (tabW - trayW) / 2) + "px";
     tray.style.top = Math.round(by - tabH + (tabH - 20) / 2 + 1) + "px";
@@ -238,7 +278,13 @@ class ImageWidget extends WidgetType {
       cap.textContent = this.alt;
       wrap.appendChild(cap);
     }
-    addDeleteBadge(box, () => removeObjRange(view, wrap, raw), raw);  // box = image-sized, so × sits on its corner
+    // box = image-sized, so × sits on its corner. Align toggles center⇄left:
+    // "center" is the bare form (no fig-align → CSS centers), "left" the only
+    // marker written. Doc-ops key off `wrap` like onDelete, not `box`.
+    addDeleteBadge(box, () => removeObjRange(view, wrap, raw), raw, {
+      get: () => (this.align === "left" ? "left" : "center"),
+      toggle: () => imageDocOps(view, wrap, raw).apply({ align: this.align === "left" ? null : "left" }),
+    });
     return wrap;
   }
   ignoreEvent() { return true; }
@@ -360,15 +406,26 @@ function enhanceTableWidget(el, view, widget) {
   if (firstPipe < 0 || lastPipe < firstPipe) return;
   const pipeText = srcLines.slice(firstPipe, lastPipe + 1).join("\n");
   const centered = /^\s*:{3,}\s*\{[^}]*\.center/.test(widget.src);
+  // Center is the default (bare table renders centered via CSS); only an
+  // explicit `.left`/`.right` wrapper overrides it.
+  const leftAligned = /^\s*:{3,}\s*\{[^}]*\.left/.test(widget.src);
   if (centered) el.classList.add("qv-tbl-center");
+  else if (leftAligned) el.classList.add("qv-tbl-left");
   else if (/^\s*:{3,}\s*\{[^}]*\.right/.test(widget.src)) el.classList.add("qv-tbl-right");
   // Pandoc table caption (": Caption") anywhere outside the pipe rows.
   let caption = "";
   for (const l of srcLines) { const m = /^\s*:\s+(\S.*)$/.exec(l); if (m) { caption = m[1].trim(); break; } }
   const ops = widgetDocOps(view, el, widget.src);
-  // We only ever emit: [optional .center wrap] table [optional ": caption"].
-  const replace = (tableText, center, cap) => {
-    let text = center ? "::: {.center}\n" + tableText + "\n:::" : tableText;
+  // Emits: [optional align wrap] table [optional ": caption"]. `align` accepts
+  // the modal's legacy boolean (true=center/false=bare) OR an explicit string
+  // ("left"/"center"/"right"/null). "center" default is the bare form, so only
+  // "left"/"right" write a wrapper — an unaligned doc round-trips untouched.
+  const replace = (tableText, align, cap) => {
+    const a = align === true ? "center" : align === false ? null : align;
+    let text = a === "left"  ? "::: {.left}\n"  + tableText + "\n:::"
+             : a === "right" ? "::: {.right}\n" + tableText + "\n:::"
+             : a === "center" ? "::: {.center}\n" + tableText + "\n:::"
+             : tableText;
     if (cap && cap.trim()) text += "\n\n: " + cap.trim();
     ops.replace(text);
   };
@@ -377,7 +434,12 @@ function enhanceTableWidget(el, view, widget) {
     e.preventDefault(); e.stopPropagation();
     HOST.editTable(pipeText, centered, caption, replace, ops.remove);
   });
-  addDeleteBadge(el, () => removeObjRange(view, el, widget.src), widget.src);
+  addDeleteBadge(el, () => removeObjRange(view, el, widget.src), widget.src, {
+    get: () => (leftAligned ? "left" : "center"),
+    // center⇄left off the class; each dispatch re-renders and rebuilds `ops`,
+    // so the single-use ops handle is fresh per toggle (mirrors onDelete).
+    toggle: () => replace(pipeText, leftAligned ? null : "left", caption),
+  });
 }
 
 /* ------------------------- callout editing -------------------------- */
@@ -515,6 +577,87 @@ function enhanceTabsetWidget(el, view, widget) {
   addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove(), widget.src);
 }
 
+function fallbackCopyText(text) {
+  const active = document.activeElement;
+  const selection = document.getSelection();
+  const ranges = [];
+  if (selection) {
+    for (let i = 0; i < selection.rangeCount; i++) ranges.push(selection.getRangeAt(i).cloneRange());
+  }
+  const t = document.createElement("textarea");
+  t.value = text;
+  t.setAttribute("readonly", "");
+  Object.assign(t.style, {
+    position: "fixed", left: "-9999px", top: "0",
+    width: "1px", height: "1px", opacity: "0",
+  });
+  document.body.appendChild(t);
+  try { t.focus({ preventScroll: true }); } catch (_) { t.focus(); }
+  t.select();
+  let copied = false;
+  try { copied = document.execCommand("copy") === true; } catch (_) {}
+  t.remove();
+  if (selection) {
+    selection.removeAllRanges();
+    for (const range of ranges) selection.addRange(range);
+  }
+  if (active && active.isConnected && active.focus) {
+    try { active.focus({ preventScroll: true }); } catch (_) { active.focus(); }
+  }
+  return copied;
+}
+
+async function copyRenderedCode(button, code) {
+  const text = code.textContent || "";
+  let copied = false;
+  try {
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+      throw new Error("clipboard unavailable");
+    }
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch (_) {
+    copied = fallbackCopyText(text);
+  }
+  if (HOST.flash) {
+    HOST.flash(copied
+      ? "코드 복사됨 — ⌘V로 붙여넣기"
+      : "코드를 복사하지 못했습니다");
+  }
+  if (copied) {
+    button.classList.add("copied");
+    setTimeout(() => button.classList.remove("copied"), 900);
+  }
+}
+
+function enhanceCodeWidget(el) {
+  const pre = el.querySelector(".qdoc > pre");
+  const code = pre && pre.querySelector(":scope > code");
+  if (!pre || !code || pre.parentElement.classList.contains("qv-codeframe")) return;
+  const frame = document.createElement("div");
+  frame.className = "qv-codeframe";
+  pre.replaceWith(frame);
+  frame.appendChild(pre);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "qv-code-copy";
+  button.title = "코드 복사";
+  button.setAttribute("aria-label", "코드 복사");
+  button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">'
+    + '<rect x="9" y="9" width="10" height="10" rx="2"></rect>'
+    + '<path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path>'
+    + "</svg>";
+  // Keep native button focus (for Tab/Enter/Space), but do not let the
+  // rendered block's click-to-edit handler consume this control.
+  button.addEventListener("mousedown", (e) => e.stopPropagation());
+  button.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void copyRenderedCode(button, code);
+  });
+  frame.appendChild(button);
+}
+
 class BlockWidget extends WidgetType {
   constructor(src, kind = "renderBlock") { super(); this.src = src; this.kind = kind; }
   eq(o) { return o.src === this.src && o.kind === this.kind; }
@@ -540,13 +683,16 @@ class BlockWidget extends WidgetType {
     if (el.querySelectorAll("table").length === 1 && /(^|\n)\s*\|/.test(this.src)) {
       enhanceTableWidget(el, view, this);
     }
-    // Code blocks: hover outline + × like every object — no popup, clicking
+    // Code blocks: the in-panel button copies only rendered code (no fence or
+    // language marker); the object ring keeps deletion, and clicking elsewhere
     // still reveals the fenced source for in-place editing.
     else if (/^\s*(```|~~~)/.test(this.src)) {
       el.classList.add("qv-hascode");
-      addDeleteBadge(el, () => removeObjRange(view, el, this.src), this.src);
+      enhanceCodeWidget(el);
+      addDeleteBadge(el, () => removeObjRange(view, el, this.src));
     }
     el.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".qv-code-copy")) return;
       // Tab switching inside a rendered tabset.
       const btn = e.target.closest(".tab-btn");
       if (btn) {
@@ -696,13 +842,14 @@ function buildDecorations(state) {
         const from = starts[i];
         const to = j < lines.length ? starts[j] + lines[j].length : doc.length;
         divRanges.push({ from, to });
-        // A ::: {.center}/{.right} wrapper whose content is just a pipe table is
-        // part of the table's FIXED presentation (written by the table toolbar's
-        // alignment toggle): always a widget, never revealed by the cursor —
-        // except under the MD raw override.
+        // A ::: {.center}/{.left}/{.right} wrapper whose content is just a pipe
+        // table is part of the table's FIXED presentation (written by the align
+        // toggle): always a widget, never revealed by the cursor — except under
+        // the MD raw override. `.left` must be here or a left-aligned table
+        // falls through to the raw-div branch and looks broken.
         const ro = state.field(rawOverride, false);
         const inRaw = ro && from < ro.to && to > ro.from;
-        const alignDiv = /\{[^}]*\.(center|right)[^}]*\}/.test(lines[i]);
+        const alignDiv = /\{[^}]*\.(center|left|right)[^}]*\}/.test(lines[i]);
         const innerLines = lines.slice(i + 1, j);
         const tableOnly = alignDiv && innerLines.length > 0
           && innerLines.every((l) => l.trim() === "" || l.trim().startsWith("|"));
@@ -1053,14 +1200,17 @@ const theme = EditorView.theme({
   ".cm-strong": { fontWeight: "700", color: "#333" },
   ".cm-em": { fontStyle: "italic" },
   ".cm-strike": { textDecoration: "line-through", color: "#999" },
-  ".qv-imgwrap": { display: "inline-block", maxWidth: "100%", cursor: "pointer" },
-  // fig-align variants: the wrap becomes a full-width block and the inner box
-  // (the image) is positioned inside it with text-align.
+  // Center is the DEFAULT: a bare image (no fig-align → no qv-align-* class)
+  // centers. Only an explicit fig-align="left" overrides it. Nothing is written
+  // to the document for center — the source stays bare and round-trips clean.
+  ".qv-imgwrap": { display: "block", textAlign: "center", maxWidth: "100%", cursor: "pointer" },
   ".qv-imgwrap.qv-align-left": { display: "block", textAlign: "left" },
   ".qv-imgwrap.qv-align-center": { display: "block", textAlign: "center" },
   ".qv-imgwrap.qv-align-right": { display: "block", textAlign: "right" },
   ".qv-imgbox": { position: "relative", display: "inline-block", maxWidth: "100%" },
-  ".qv-imgwrap:hover .qv-img": { outline: "2px solid #ffd5ce", outlineOffset: "2px", borderRadius: "2px" },
+  // (removed) image-specific hover outline: the shared SVG folder-ring drawn by
+  // addDeleteBadge is now the ONE hover affordance for every object — a second
+  // outline here just double-drew an orange line inside the ring (이슬 감사).
   // Caption sits directly beneath the image (block right under the box).
   ".qv-imgcap": { display: "block", textAlign: "center", color: "#6c757d", fontSize: "0.9em", marginTop: "0.25em", lineHeight: "1.35" },
   ".qv-img-grip": {
@@ -1105,9 +1255,12 @@ const theme = EditorView.theme({
   // That shrink-wrap also means the ::: {.center}/{.right} wrapper INSIDE the
   // widget has no room to move the table — so alignment is applied to the
   // widget box itself (classes set by enhanceTableWidget from the src).
-  ".qv-block.qv-hastable": { width: "fit-content", maxWidth: "100%" },
-  ".qv-block.qv-hastable.qv-tbl-center": { marginLeft: "auto", marginRight: "auto" },
-  ".qv-block.qv-hastable.qv-tbl-right": { marginLeft: "auto" },
+  // Center is the DEFAULT (auto/auto margins); an explicit .left/.right wrapper
+  // overrides it. .qv-tbl-right MUST pin marginRight:0 now that the base is
+  // auto/auto, or existing right-aligned tables would silently center.
+  ".qv-block.qv-hastable": { width: "fit-content", maxWidth: "100%", marginLeft: "auto", marginRight: "auto" },
+  ".qv-block.qv-hastable.qv-tbl-left": { marginLeft: "0", marginRight: "auto" },
+  ".qv-block.qv-hastable.qv-tbl-right": { marginLeft: "auto", marginRight: "0" },
   // Empty cells must stay clickable: give them real size and an invisible
   // filler so a fresh table isn't a stack of hairlines.
   // Hover affordance for all objects is the SVG ring drawn by addDeleteBadge

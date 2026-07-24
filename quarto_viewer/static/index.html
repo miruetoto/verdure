@@ -313,14 +313,57 @@
     opacity: 0; pointer-events: none; transition: opacity .12s;
   }
   .qv-obj:hover .qv-badges { opacity: 1; pointer-events: auto; }
+  /* The tab band is a hover surface, not just a picture. `.qv-hit` is a
+     transparent rect the editor sizes from the ring's top down to the object's
+     top edge — never past it, or it eats the content's first row of clicks
+     (이슬 감사 260724-1137: 7px OK, 8px → elementFromPoint hits the tray).
+     Full ring width on purpose: a hand goes for the buttons diagonally and
+     crosses the object's top edge well left of them, so a tray-width bridge
+     misses. Only live while hovered, so it never swallows a click on the line
+     above an idle object. */
+  .qv-obj:hover .qv-ring .qv-hit { pointer-events: auto; }
   .qv-badges button {
     width: 20px; height: 20px; padding: 0; border: none; border-radius: 50%;
     color: #fff; text-align: center; cursor: pointer;
   }
+  /* 정렬(align) toggle — tables + images only. Green to read apart from the
+     grey copy and red delete; the ▤/▥ glyph shows the current alignment. */
+  .qv-alignx { background: #1a7f4b; font: 700 12px/20px -apple-system, system-ui, sans-serif; }
+  .qv-alignx:hover { background: #14663c; }
   .qv-copyx { background: #6c757d; font: 600 11px/20px -apple-system, system-ui, sans-serif; }
   .qv-copyx:hover { background: #4d565e; }
   .qv-delx { background: #ff0039; font: 700 13px/20px -apple-system, system-ui, sans-serif; }
   .qv-delx:hover { background: #d0002f; }
+  /* Fenced-code chrome: only `pre` scrolls. The sibling copy button stays
+     anchored to the rendered panel while a long line moves underneath it. */
+  .qv-block.qv-hascode,
+  .qv-block.qv-hascode > .qdoc,
+  .qv-codeframe {
+    box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%;
+  }
+  .qv-codeframe { position: relative; }
+  .qv-codeframe > pre { width: 100%; padding-right: 3.25rem; }
+  .qv-code-copy {
+    position: absolute; top: 8px; right: 8px; z-index: 2;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0;
+    border: 1px solid var(--border-strong); border-radius: 7px;
+    background: var(--bg); color: var(--muted); cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    transition: color .12s, border-color .12s, background .12s;
+  }
+  .qv-code-copy:hover {
+    color: var(--accent); border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  }
+  .qv-code-copy.copied { color: #27864b; border-color: #27864b; }
+  .qv-code-copy:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .qv-code-copy svg {
+    width: 16px; height: 16px; fill: none; stroke: currentColor;
+    stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  }
   /* live rendered preview inside object modals ("실제 들어가는 모양") */
   .obj-preview {
     border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg);
@@ -1283,15 +1326,20 @@ async function enhance(el) {
     // Alt text is the Quarto figure caption. Only a STANDALONE image (its own
     // paragraph) becomes a <figure> with a caption; inline images keep alt only.
     const cap = (img.getAttribute("alt") || "").trim();
-    if (!missing && cap) {
-      const p = img.parentElement;
-      const alone = p && p.tagName === "P" &&
-        [...p.childNodes].every((n) => n === img || (n.nodeType === 3 && !n.textContent.trim()));
-      if (alone) {
-        const fig = document.createElement("figure"); fig.className = "qv-figure";
-        const fc = document.createElement("figcaption"); fc.textContent = cap;
-        p.replaceWith(fig); fig.appendChild(img); fig.appendChild(fc);
-      }
+    const p = img.parentElement;
+    const alone = p && p.tagName === "P" &&
+      [...p.childNodes].every((n) => n === img || (n.nodeType === 3 && !n.textContent.trim()));
+    if (!missing && cap && alone) {
+      const fig = document.createElement("figure"); fig.className = "qv-figure";
+      const fc = document.createElement("figcaption"); fc.textContent = cap;
+      p.replaceWith(fig); fig.appendChild(img); fig.appendChild(fc);
+    } else if (!missing && alone && !img.style.marginLeft) {
+      // Bare standalone image (no fig-align, no caption): center by default,
+      // matching the editor live-preview. Inline images are left untouched so a
+      // picture mid-sentence isn't yanked onto its own centered line.
+      img.style.display = "block";
+      img.style.marginLeft = "auto";
+      img.style.marginRight = "auto";
     }
   }
 }
@@ -1525,10 +1573,11 @@ function switchTo(id) {
 }
 
 function addTab(st) {
+  if (!st.starter) dismissUntouchedStarter();
   if (st.path) { const ex = tabs.find((t) => t.path === st.path); if (ex) { switchTo(ex.id); return ex; } }
   const t = {
     id: ++seq, path: st.path || "", title: st.title,
-    help: !!st.help, helpAuto: !!st.helpAuto,
+    help: !!st.help, helpAuto: !!st.helpAuto, starter: !!st.starter,
     state: freshStateParked(st.text), savedText: st.text,
     scrollTop: 0, external: false, pending: null,
   };
@@ -1537,6 +1586,17 @@ function addTab(st) {
   syncTrack();
   switchTo(t.id);
   return t;
+}
+// Finder/CLI launch payloads arrive just after the renderer boots. Keep the
+// startup document visible immediately, but replace it if it is still the
+// untouched template when the requested file (or --new-blank) arrives.
+function dismissUntouchedStarter() {
+  for (let i = tabs.length - 1; i >= 0; i--) {
+    const t = tabs[i];
+    if (!t.starter || t.path || isDirty(t)) continue;
+    if (activeId === t.id) activeId = null;
+    tabs.splice(i, 1);
+  }
 }
 // Auto-opened help leaves as soon as a real document exists. An edited
 // (dirty) help tab is the user's content now — that one stays.
@@ -1585,6 +1645,9 @@ function syncTrack() {
 // Starter document for 새로 만들기 — an untitled tab (no file until first save).
 const NEW_DOC = '---\ntitle: "제목 없음"\n---\n\n';
 function doNew() { addTab({ text: NEW_DOC, title: "제목 없음", path: "" }); }
+function openStarter() {
+  addTab({ text: NEW_DOC, title: "제목 없음", path: "", starter: true });
+}
 
 /* ============ Autosave (Apple Notes-style) ============ */
 // An untitled document gets a real file in ~/Documents/Pururum as soon as it
@@ -2775,7 +2838,7 @@ window.addEventListener("pywebviewready", async () => {
 
   const state = await api().get_state();
   if (state.path) addTab(state);              // launched with a file
-  else openAutoHelp();                        // no documents → help greets (auto-dismissing)
+  else openStarter();                         // no file → untitled new document
   if (state.folder) openFolder(state.folder); // launched on a folder → add as root
   else renderEmptySidebar();                   // otherwise the explorer starts empty
   for (const p of pendingOpens.splice(0)) {
