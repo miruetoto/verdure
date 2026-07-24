@@ -133,8 +133,11 @@ function addDeleteBadge(el, onDelete, src) {
     const target = el.querySelector("table, .tabset, .callout, .frontmatter, pre, mjx-container") || el;
     const er = el.getBoundingClientRect(), tr = target.getBoundingClientRect();
     if (!tr.width) return;
-    tray.style.top = Math.round(tr.top - er.top - 25) + "px";
-    tray.style.right = Math.round(er.right - tr.right + 12) + "px";
+    // Float the pill a clear 6px above the outline, right-aligned with it —
+    // deliberately detached (fused-tab attempts read as glitches).
+    const off = parseFloat(getComputedStyle(target).outlineOffset) || 0;
+    tray.style.top = Math.round(tr.top - er.top - off - 34) + "px";
+    tray.style.right = Math.round(er.right - tr.right - off) + "px";
   });
 }
 
@@ -1079,7 +1082,10 @@ const theme = EditorView.theme({
   ".qv-hasfm:hover .frontmatter": { outline: "2px solid #ffd5ce", outlineOffset: "6px", borderRadius: "6px" },
   // Code blocks and $$ block math: outline + × only (click edits in place).
   ".qv-hascode:hover pre": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "6px" },
-  ".qv-math-block.qv-obj:hover mjx-container": { outline: "2px solid #ffd5ce", outlineOffset: "6px", borderRadius: "6px" },
+  // Display math shrinks its container to the formula (still centered), so
+  // the hover outline + badge tab hug the math instead of a full-width void.
+  ".qv-math-block mjx-container": { width: "max-content", maxWidth: "100%", marginLeft: "auto", marginRight: "auto" },
+  ".qv-math-block.qv-obj:hover mjx-container": { outline: "2px solid #ffd5ce", outlineOffset: "8px", borderRadius: "6px" },
   ".qv-hastable td, .qv-hastable th": { minWidth: "3.5em", height: "1.7em" },
   ".qv-hastable td:empty::before, .qv-hastable th:empty::before": { content: '"\\00a0"' },
   // The toolbar is ALWAYS present above the table (in flow, no hover games —

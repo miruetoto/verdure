@@ -297,24 +297,24 @@
   .tbl-hint { font: 400 11px/1.3 -apple-system, system-ui, sans-serif; color: var(--muted); }
   /* Uniform object delete badge: hover any object (image/table/tabset) → × */
   .qv-obj { position: relative; }
-  /* Object badge TAB (사용자 시안): the hover outline grows a little tab at
-     its top-right corner holding [⧉ ×] — like a file-folder tab. Positioned
-     per-object at hover time (editor.js seats it on the outlined box). */
+  /* Object hover toolbar: a small detached pill floating just above the
+     outline's top-right — deliberately separate (fused-tab attempts read as
+     rendering glitches), like Notion's block toolbar. */
   .qv-badges {
-    position: absolute; top: -25px; right: 12px; z-index: 6;
-    display: flex; align-items: center; gap: 4px; padding: 3px 7px;
-    background: #fdfdf9; border: 2px solid #ffd5ce; border-bottom: none;
-    border-radius: 9px 9px 0 0;
+    position: absolute; top: -34px; right: 0; z-index: 6;
+    display: flex; align-items: center; gap: 3px; padding: 3px;
+    background: var(--bg); border: 1px solid var(--border-strong);
+    border-radius: 999px; box-shadow: 0 2px 10px rgba(43,43,38,.14);
     opacity: 0; pointer-events: none; transition: opacity .12s;
   }
   .qv-obj:hover .qv-badges { opacity: 1; pointer-events: auto; }
   .qv-badges button {
-    width: 19px; height: 19px; padding: 0; border: none; border-radius: 50%;
+    width: 20px; height: 20px; padding: 0; border: none; border-radius: 50%;
     color: #fff; text-align: center; cursor: pointer;
   }
-  .qv-copyx { background: #6c757d; font: 600 11px/19px -apple-system, system-ui, sans-serif; }
+  .qv-copyx { background: #6c757d; font: 600 11px/20px -apple-system, system-ui, sans-serif; }
   .qv-copyx:hover { background: #4d565e; }
-  .qv-delx { background: #ff0039; font: 700 13px/19px -apple-system, system-ui, sans-serif; }
+  .qv-delx { background: #ff0039; font: 700 13px/20px -apple-system, system-ui, sans-serif; }
   .qv-delx:hover { background: #d0002f; }
   /* live rendered preview inside object modals ("실제 들어가는 모양") */
   .obj-preview {
