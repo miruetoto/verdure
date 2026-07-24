@@ -127,18 +127,44 @@ function addDeleteBadge(el, onDelete, src) {
   });
   btn("qv-delx", "×", "삭제", onDelete);
   el.appendChild(tray);
-  // Seat the tab flush on the OUTLINED box's top-right corner. Re-measured on
-  // every hover (images load late, zoom changes, callouts fold).
-  el.addEventListener("mouseenter", () => {
-    const target = el.querySelector("table, .tabset, .callout, .frontmatter, pre, mjx-container") || el;
+  // The hover outline WITH its top-right tab is ONE continuous SVG stroke
+  // (사용자 시안) — CSS outlines can't grow a bump, and gluing separate boxes
+  // always showed seams. And because the tab is attached, the pointer never
+  // crosses a dead zone on its way to the buttons (the pill "ran away").
+  const svgNS = "http://www.w3.org/2000/svg";
+  const ring = document.createElementNS(svgNS, "svg");
+  ring.setAttribute("class", "qv-ring");
+  const ringPath = document.createElementNS(svgNS, "path");
+  ringPath.setAttribute("fill", "none");
+  ringPath.setAttribute("stroke", "#ffc9c0");
+  ringPath.setAttribute("stroke-width", "2");
+  ring.appendChild(ringPath);
+  el.appendChild(ring);
+  const positionRing = () => {
+    const target = (el.classList.contains("qv-math-block") && el.querySelector("mjx-math"))
+      || el.querySelector("table, .tabset, .callout, .frontmatter, pre") || el;
     const er = el.getBoundingClientRect(), tr = target.getBoundingClientRect();
     if (!tr.width) return;
-    // Float the pill a clear 6px above the outline, right-aligned with it —
-    // deliberately detached (fused-tab attempts read as glitches).
-    const off = parseFloat(getComputedStyle(target).outlineOffset) || 0;
-    tray.style.top = Math.round(tr.top - er.top - off - 34) + "px";
-    tray.style.right = Math.round(er.right - tr.right - off) + "px";
-  });
+    const off = 5, tabH = 26, r = 10, r2 = 8, pad = 2;
+    const bx = tr.left - er.left - off, by = tr.top - er.top - off;
+    const bw = tr.width + off * 2, bh = tr.height + off * 2;
+    const trayW = tray.offsetWidth || 48, tabW = trayW + 18;
+    ring.style.left = Math.round(bx - pad) + "px";
+    ring.style.top = Math.round(by - tabH - pad) + "px";
+    ring.setAttribute("width", Math.round(bw + pad * 2));
+    ring.setAttribute("height", Math.round(bh + tabH + pad * 2));
+    const x0 = pad, y0 = pad, x1 = pad + bw, yT = pad + tabH, y1 = pad + tabH + bh;
+    const xb = Math.max(x0 + r + tabW, x1 - 10), xa = xb - tabW;
+    ringPath.setAttribute("d",
+      `M ${x0 + r} ${yT} L ${xa} ${yT} L ${xa} ${y0 + r2} Q ${xa} ${y0} ${xa + r2} ${y0} `
+      + `L ${xb - r2} ${y0} Q ${xb} ${y0} ${xb} ${y0 + r2} L ${xb} ${yT} L ${x1 - r} ${yT} `
+      + `Q ${x1} ${yT} ${x1} ${yT + r} L ${x1} ${y1 - r} Q ${x1} ${y1} ${x1 - r} ${y1} `
+      + `L ${x0 + r} ${y1} Q ${x0} ${y1} ${x0} ${y1 - r} L ${x0} ${yT + r} Q ${x0} ${yT} ${x0 + r} ${yT}`);
+    tray.style.left = Math.round(bx - pad + xa + (tabW - trayW) / 2) + "px";
+    tray.style.top = Math.round(by - tabH + (tabH - 20) / 2 + 1) + "px";
+  };
+  el.addEventListener("mouseenter", positionRing);
+  el.addEventListener("toggle", positionRing, true);  // callout fold/unfold resizes the box
 }
 
 class ImageWidget extends WidgetType {
@@ -1060,7 +1086,7 @@ const theme = EditorView.theme({
   // (not the cramped pale dot it was).
   ".qv-bullet": { color: "#555", paddingRight: "0.45em", fontSize: "0.9em" },
   ".qv-math": { color: "#333" },
-  ".qv-math-block": { textAlign: "center", margin: "2px 0" },
+  ".qv-math-block": { textAlign: "center", margin: "2px 0", display: "flex", justifyContent: "center" },
   ".qv-block": { margin: "0", position: "relative" },
   // A table block shrinks to the table's width so its × badge lands on the
   // table's own top-right corner, not far out at the full-line right edge.
@@ -1072,20 +1098,14 @@ const theme = EditorView.theme({
   ".qv-block.qv-hastable.qv-tbl-right": { marginLeft: "auto" },
   // Empty cells must stay clickable: give them real size and an invisible
   // filler so a fresh table isn't a stack of hairlines.
-  ".qv-hastable": { cursor: "pointer" },
-  ".qv-hastable:hover table": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "4px" },
-  // Every popup-edited object announces itself the same way the table does:
-  // hover → soft coral outline (탭셋, 콜아웃, 제목/front matter).
-  ".qv-hastabset, .qv-hascallout, .qv-hasfm": { cursor: "pointer" },
-  ".qv-hastabset:hover .tabset": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "4px" },
-  ".qv-hascallout:hover .callout": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "6px" },
-  ".qv-hasfm:hover .frontmatter": { outline: "2px solid #ffd5ce", outlineOffset: "6px", borderRadius: "6px" },
-  // Code blocks and $$ block math: outline + × only (click edits in place).
-  ".qv-hascode:hover pre": { outline: "2px solid #ffd5ce", outlineOffset: "3px", borderRadius: "6px" },
-  // Display math shrinks its container to the formula (still centered), so
-  // the hover outline + badge tab hug the math instead of a full-width void.
-  ".qv-math-block mjx-container": { width: "max-content", maxWidth: "100%", marginLeft: "auto", marginRight: "auto" },
-  ".qv-math-block.qv-obj:hover mjx-container": { outline: "2px solid #ffd5ce", outlineOffset: "8px", borderRadius: "6px" },
+  // Hover affordance for all objects is the SVG ring drawn by addDeleteBadge
+  // (outline + badge tab as one stroke) — no CSS outlines here anymore.
+  ".qv-hastable, .qv-hastabset, .qv-hascallout, .qv-hasfm": { cursor: "pointer" },
+  // Display math: the flex centering keeps the formula centered while the
+  // formula box (mjx-math) shrinks to content — MathJax pins it to 100%
+  // otherwise — so the hover ring hugs the math itself.
+  ".qv-math-block mjx-container": { maxWidth: "100%" },
+  ".qv-math-block mjx-math": { width: "auto !important" },
   ".qv-hastable td, .qv-hastable th": { minWidth: "3.5em", height: "1.7em" },
   ".qv-hastable td:empty::before, .qv-hastable th:empty::before": { content: '"\\00a0"' },
   // The toolbar is ALWAYS present above the table (in flow, no hover games —
