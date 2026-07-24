@@ -306,6 +306,16 @@
   }
   .qv-obj:hover .qv-delx { opacity: 1; }
   .qv-delx:hover { background: #d0002f; }
+  /* ⧉ copy badge — sits left of the ×, same hover reveal */
+  .qv-copyx {
+    position: absolute; top: 4px; right: 30px; z-index: 6;
+    width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
+    background: #6c757d; color: #fff; font: 600 12px/22px -apple-system, system-ui, sans-serif;
+    text-align: center; cursor: pointer; opacity: 0; transition: opacity .12s;
+    box-shadow: 0 1px 4px rgba(0,0,0,.3);
+  }
+  .qv-obj:hover .qv-copyx { opacity: 1; }
+  .qv-copyx:hover { background: #4d565e; }
   /* live rendered preview inside object modals ("실제 들어가는 모양") */
   .obj-preview {
     border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg);
@@ -2716,6 +2726,7 @@ window.addEventListener("pywebviewready", async () => {
     editFrontmatter: editFrontmatterFromWidget,
     editImage: editImageFromWidget,
     settleCaret,
+    flash,
   });
   // ⌘V로 스크린샷/이미지 붙여넣기: 클립보드에 이미지가 있으면 활성 문서 옆
   // attachments/ 폴더에 저장하고 마크다운을 삽입한다 (텍스트 붙여넣기는 그대로).

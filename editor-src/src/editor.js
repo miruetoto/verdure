@@ -29,6 +29,7 @@ let HOST = {
   editFrontmatter: null, // host-provided front-matter fields popup
   editImage: null,   // host-provided image popup editor (align/size/delete)
   settleCaret: null, // host-provided caret settling across modal focus handoffs
+  flash: null,       // host-provided toast (used by the ⧉ copy badge)
 };
 
 // Set by create() to a debounced reflow. Inline-math widgets call it after an
@@ -101,14 +102,28 @@ function imageDocOps(view, dom, raw) {
 }
 
 // Every fixed object (image, table, tabset, …) gets the same hover affordance:
-// a small × badge at the top-right; clicking it deletes the whole object. The
-// object-specific popup is what differs — deletion is uniform.
-function addDeleteBadge(el, onDelete) {
+// copy (⧉, puts the object's markdown on the clipboard) and delete (×) badges
+// at the top-right. The object-specific popup is what differs — copying and
+// deletion are uniform.
+function addDeleteBadge(el, onDelete, src) {
   el.classList.add("qv-obj");
-  const x = document.createElement("button");
-  x.className = "qv-delx"; x.type = "button"; x.title = "삭제"; x.textContent = "×";
-  x.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); onDelete(); });
-  el.appendChild(x);
+  const btn = (cls, txt, title, fn) => {
+    const b = document.createElement("button");
+    b.className = cls; b.type = "button"; b.title = title; b.textContent = txt;
+    b.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
+    el.appendChild(b);
+  };
+  if (src != null) btn("qv-copyx", "⧉", "복사", () => {
+    const text = String(src);
+    try { navigator.clipboard.writeText(text); } catch (_) {
+      const t = document.createElement("textarea");
+      t.value = text; document.body.appendChild(t); t.select();
+      try { document.execCommand("copy"); } catch (_) {}
+      t.remove();
+    }
+    if (HOST.flash) HOST.flash("오브젝트 복사됨 — ⌘V로 붙여넣기");
+  });
+  btn("qv-delx", "×", "삭제", onDelete);
 }
 
 class ImageWidget extends WidgetType {
@@ -170,7 +185,7 @@ class ImageWidget extends WidgetType {
       cap.textContent = this.alt;
       wrap.appendChild(cap);
     }
-    addDeleteBadge(box, () => removeObjRange(view, wrap, raw));  // box = image-sized, so × sits on its corner
+    addDeleteBadge(box, () => removeObjRange(view, wrap, raw), raw);  // box = image-sized, so × sits on its corner
     return wrap;
   }
   ignoreEvent() { return true; }
@@ -227,7 +242,7 @@ class MathWidget extends WidgetType {
     el.addEventListener("mousedown", (e) => { e.preventDefault(); placeCursor(view, el); });
     // Block math: same hover outline + × as the other objects — but NO popup;
     // clicking still reveals the $$…$$ source for in-place editing.
-    if (this.display && this.raw) addDeleteBadge(el, () => removeObjRange(view, el, this.raw));
+    if (this.display && this.raw) addDeleteBadge(el, () => removeObjRange(view, el, this.raw), this.raw);
     return el;
   }
   ignoreEvent() { return true; }
@@ -309,7 +324,7 @@ function enhanceTableWidget(el, view, widget) {
     e.preventDefault(); e.stopPropagation();
     HOST.editTable(pipeText, centered, caption, replace, ops.remove);
   });
-  addDeleteBadge(el, () => removeObjRange(view, el, widget.src));
+  addDeleteBadge(el, () => removeObjRange(view, el, widget.src), widget.src);
 }
 
 /* ------------------------- callout editing -------------------------- */
@@ -351,7 +366,7 @@ function enhanceCalloutWidget(el, view, widget) {
   // Fold/unfold changes the widget's height — re-measure or clicks below drift.
   el.querySelectorAll("details").forEach((d) =>
     d.addEventListener("toggle", () => { try { view.requestMeasure(); } catch (_) {} }));
-  addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove());
+  addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove(), widget.src);
 }
 
 /* ---------------------- front-matter editing ------------------------ */
@@ -364,7 +379,7 @@ function enhanceFrontmatterWidget(el, view, widget) {
     e.preventDefault(); e.stopPropagation();
     HOST.editFrontmatter(widget.src, ops.replace, ops.remove);
   });
-  addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove());
+  addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove(), widget.src);
 }
 
 /* ------------------------- tabset editing --------------------------- */
@@ -444,7 +459,7 @@ function enhanceTabsetWidget(el, view, widget) {
     e.preventDefault(); e.stopPropagation();
     HOST.editTabset(widget.src, ops.replace, ops.remove);
   });
-  addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove());
+  addDeleteBadge(el, () => widgetDocOps(view, el, widget.src).remove(), widget.src);
 }
 
 class BlockWidget extends WidgetType {
@@ -476,7 +491,7 @@ class BlockWidget extends WidgetType {
     // still reveals the fenced source for in-place editing.
     else if (/^\s*(```|~~~)/.test(this.src)) {
       el.classList.add("qv-hascode");
-      addDeleteBadge(el, () => removeObjRange(view, el, this.src));
+      addDeleteBadge(el, () => removeObjRange(view, el, this.src), this.src);
     }
     el.addEventListener("mousedown", (e) => {
       // Tab switching inside a rendered tabset.
@@ -1129,6 +1144,7 @@ function create(parent, opts = {}) {
     editImage: opts.editImage || HOST.editImage,
     settleCaret: opts.settleCaret || HOST.settleCaret,
     resolveImages: opts.resolveImages || HOST.resolveImages,
+    flash: opts.flash || HOST.flash,
   };
 
   const saveKey = {
