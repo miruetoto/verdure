@@ -153,22 +153,30 @@ function addDeleteBadge(el, onDelete, src) {
     const bx = (tr.left - er.left) / z - off, by = (tr.top - er.top) / z - off;
     const bw = tr.width / z + off * 2, bh = tr.height / z + off * 2;
     const trayW = tray.offsetWidth || 48, tabW = trayW + 18;
-    ring.style.left = Math.round(bx - pad) + "px";
     ring.style.top = Math.round(by - tabH - pad) + "px";
-    ring.setAttribute("width", Math.round(bw + pad * 2));
     ring.setAttribute("height", Math.round(bh + tabH + pad * 2));
-    const x0 = pad, y0 = pad, x1 = pad + bw, yT = pad + tabH, y1 = pad + tabH + bh;
-    const xb = Math.max(x0 + r + tabW, x1 - 10), xa = xb - tabW;
+    // Very narrow targets (short formulas): widen the ring symmetrically to
+    // fit the tab instead of letting the path fold back on itself.
+    const minW = tabW + r + 22;
+    let bx2 = bx, bw2 = bw;
+    if (bw2 < minW) { bx2 -= (minW - bw2) / 2; bw2 = minW; }
+    ring.style.left = Math.round(bx2 - pad) + "px";
+    ring.setAttribute("width", Math.round(bw2 + pad * 2));
+    const x0 = pad, y0 = pad, x1 = pad + bw2, yT = pad + tabH, y1 = pad + tabH + bh;
+    const xb = x1 - 10, xa = xb - tabW;
     ringPath.setAttribute("d",
       `M ${x0 + r} ${yT} L ${xa} ${yT} L ${xa} ${y0 + r2} Q ${xa} ${y0} ${xa + r2} ${y0} `
       + `L ${xb - r2} ${y0} Q ${xb} ${y0} ${xb} ${y0 + r2} L ${xb} ${yT} L ${x1 - r} ${yT} `
       + `Q ${x1} ${yT} ${x1} ${yT + r} L ${x1} ${y1 - r} Q ${x1} ${y1} ${x1 - r} ${y1} `
       + `L ${x0 + r} ${y1} Q ${x0} ${y1} ${x0} ${y1 - r} L ${x0} ${yT + r} Q ${x0} ${yT} ${x0 + r} ${yT}`);
-    tray.style.left = Math.round(bx - pad + xa + (tabW - trayW) / 2) + "px";
+    tray.style.right = "auto";  // belt & braces vs. any stray CSS `right`
+    tray.style.left = Math.round(bx2 - pad + xa + (tabW - trayW) / 2) + "px";
     tray.style.top = Math.round(by - tabH + (tabH - 20) / 2 + 1) + "px";
   };
   el.addEventListener("mouseenter", positionRing);
   el.addEventListener("toggle", positionRing, true);  // callout fold/unfold resizes the box
+  // Tab switches / inner clicks change the box height — re-seat next frame.
+  el.addEventListener("click", () => requestAnimationFrame(positionRing));
 }
 
 class ImageWidget extends WidgetType {
