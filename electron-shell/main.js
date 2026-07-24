@@ -28,6 +28,10 @@ author: "환영합니다 👋"
 
 /* ---- state (mirrors Rust AppState) ---- */
 const st = { path: null, folder: null, mtimes: new Map() };
+// Files the app created by AUTOSAVE that the user never explicitly saved
+// (⌘S). They are working scratch, not documents — deleted when their tab
+// closes (discard_doc) or the app quits. ⌘S promotes them (keep_doc).
+const autoCreated = new Set();
 
 const mtimeOf = (p) => { try { return fs.statSync(p).mtimeMs; } catch (_) { return null; } };
 const titleOf = (p) => path.basename(p).replace(/\.[^.]+$/, "");
@@ -164,7 +168,17 @@ const H = {
     try { fs.writeFileSync(p, text); } catch (e) { return { error: e.message }; }
     st.path = p;
     st.mtimes.set(p, mtimeOf(p));
+    autoCreated.add(p);
     return { saved: true, title: titleOf(p), path: p };
+  },
+  keep_doc: (_e, { path: p }) => { autoCreated.delete(p || st.path); return { ok: true }; },
+  discard_doc: (_e, { path: p }) => {
+    if (!p || !autoCreated.has(p)) return { kept: true };
+    try { fs.unlinkSync(p); } catch (_) {}
+    autoCreated.delete(p);
+    st.mtimes.delete(p);
+    if (st.path === p) st.path = null;
+    return { deleted: true };
   },
   // Autosaved docs follow the document's title: rename in place, collision-safe.
   rename_doc: (_e, { title }) => {
@@ -183,6 +197,7 @@ const H = {
     }
     if (p2 === st.path) return { renamed: true, path: st.path, title: titleOf(st.path) };
     try { fs.renameSync(st.path, p2); } catch (e) { return { error: e.message }; }
+    if (autoCreated.has(st.path)) { autoCreated.delete(st.path); autoCreated.add(p2); }
     st.mtimes.delete(st.path);
     st.path = p2;
     st.mtimes.set(p2, mtimeOf(p2));
@@ -271,5 +286,10 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+});
+// Quit = 초기화: autosave scratch files the user never ⌘S-ed vanish with it.
+app.on("before-quit", () => {
+  for (const p of autoCreated) { try { fs.unlinkSync(p); } catch (_) {} }
+  autoCreated.clear();
 });
 app.on("window-all-closed", () => { app.quit(); });

@@ -297,8 +297,10 @@
   .tbl-hint { font: 400 11px/1.3 -apple-system, system-ui, sans-serif; color: var(--muted); }
   /* Uniform object delete badge: hover any object (image/table/tabset) → × */
   .qv-obj { position: relative; }
+  /* Badges perch on the object's top-right corner, half outside the box
+     (사용자 시안) — clear of callout chevrons and header content alike. */
   .qv-delx {
-    position: absolute; top: 4px; right: 4px; z-index: 6;
+    position: absolute; top: -10px; right: -10px; z-index: 6;
     width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
     background: #ff0039; color: #fff; font: 700 15px/22px -apple-system, system-ui, sans-serif;
     text-align: center; cursor: pointer; opacity: 0; transition: opacity .12s;
@@ -308,7 +310,7 @@
   .qv-delx:hover { background: #d0002f; }
   /* ⧉ copy badge — sits left of the ×, same hover reveal */
   .qv-copyx {
-    position: absolute; top: 4px; right: 30px; z-index: 6;
+    position: absolute; top: -10px; right: 16px; z-index: 6;
     width: 22px; height: 22px; padding: 0; border: none; border-radius: 50%;
     background: #6c757d; color: #fff; font: 600 12px/22px -apple-system, system-ui, sans-serif;
     text-align: center; cursor: pointer; opacity: 0; transition: opacity .12s;
@@ -316,10 +318,6 @@
   }
   .qv-obj:hover .qv-copyx { opacity: 1; }
   .qv-copyx:hover { background: #4d565e; }
-  /* Callouts: step the badges left so they never cover the fold chevron (⌄)
-     sitting at the header's right edge. */
-  .qv-hascallout .qv-delx { right: 40px; }
-  .qv-hascallout .qv-copyx { right: 66px; }
   /* live rendered preview inside object modals ("실제 들어가는 모양") */
   .obj-preview {
     border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg);
@@ -1550,7 +1548,14 @@ function closeTab(id) {
   const idx = tabs.findIndex((t) => t.id === id);
   if (idx < 0) return;
   const t = tabs[idx];
-  if (isDirty(t) && !confirm("저장되지 않은 변경사항이 있습니다:\n" + t.title + "\n\n닫을까요?")) return;
+  // Autosave-scratch docs (never ⌘S-ed) don't outlive their tab: closing
+  // deletes the file too — that's the intent; ⌘S is what makes a document.
+  if (t.auto) {
+    const text = t.id === activeId ? ed.getValue() : t.savedText;
+    if ((text || "").trim() && text !== NEW_DOC
+        && !confirm("저장하지 않은 문서입니다 — 닫으면 사라집니다:\n" + t.title + "\n\n(남기려면 취소 후 ⌘S)")) return;
+    if (api().discard_doc) api().discard_doc(t.path);
+  } else if (isDirty(t) && !confirm("저장되지 않은 변경사항이 있습니다:\n" + t.title + "\n\n닫을까요?")) return;
   tabs.splice(idx, 1);
   if (activeId === id) {
     activeId = null;  // so switchTo doesn't try to persist the removed tab
@@ -1716,6 +1721,8 @@ async function doSave() {
     if (r && r.saved) {
       t.savedText = text; t.path = r.path; t.title = r.title;
       t.external = false; t.pending = null; activeTitle = r.title;
+      // ⌘S promotes an autosave-scratch doc into a real, persistent file.
+      if (t.auto) { t.auto = false; if (api().keep_doc) api().keep_doc(t.path); }
       statusEl.textContent = ""; reloadBtn.classList.remove("show");
       syncTrack(); renderTabs();
       flash("저장됨 — " + r.title);
@@ -2417,9 +2424,6 @@ const HELP_MD = [
   '| 저장 | ⌘S | 현재 문서 저장 |',
   '| 새 문서 | ⌘N | 빈 문서 만들기 |',
   '| HTML 내보내기 | ⌘P | 문서를 자체 완결 .html 한 파일로 저장 |', '',
-  '::: {.callout-note}',
-  '제목 없는 새 문서에 그림·이미지를 넣으면 자동으로 `~/Documents/Pururum` 폴더에 저장되어 아무것도 잃지 않습니다.',
-  ':::', '',
   '## 편집 모드', '',
   '오른쪽 위 **동그란 `<>` 버튼**(또는 **⌘E**)으로 **위지윅 ↔ 소스**를 전환합니다. 소스 모드에서는 원문 마크다운을 그대로 봅니다.', '',
   '## 오브젝트 — 표 · 그림 · 탭셋', '',

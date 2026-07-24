@@ -23,6 +23,8 @@ contextBridge.exposeInMainWorld("pywebview", {
     save_as: (text) => inv("save_as", { text }),
     autosave: (text, hint) => inv("autosave", { text, hint }),
     rename_doc: (title) => inv("rename_doc", { title }),
+    keep_doc: (path) => inv("keep_doc", { path }),
+    discard_doc: (path) => inv("discard_doc", { path }),
     resolve_asset: (src) => inv("resolve_asset", { src }),
     paste_image: () => inv("paste_image"),
     save_drawing: (dataUrl) => inv("save_drawing", { dataurl: dataUrl }),
