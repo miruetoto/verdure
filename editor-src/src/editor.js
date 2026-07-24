@@ -146,8 +146,12 @@ function addDeleteBadge(el, onDelete, src) {
     const er = el.getBoundingClientRect(), tr = target.getBoundingClientRect();
     if (!tr.width) return;
     const off = 5, tabH = 26, r = 10, r2 = 8, pad = 2;
-    const bx = tr.left - er.left - off, by = tr.top - er.top - off;
-    const bw = tr.width + off * 2, bh = tr.height + off * 2;
+    // Rects come back multiplied by the document zoom, but styles we set are
+    // in pre-zoom CSS px — divide the measurements or the ring drifts/stretches
+    // at any zoom other than 100%.
+    const z = parseFloat(getComputedStyle(document.querySelector(".cm-scroller") || el).zoom) || 1;
+    const bx = (tr.left - er.left) / z - off, by = (tr.top - er.top) / z - off;
+    const bw = tr.width / z + off * 2, bh = tr.height / z + off * 2;
     const trayW = tray.offsetWidth || 48, tabW = trayW + 18;
     ring.style.left = Math.round(bx - pad) + "px";
     ring.style.top = Math.round(by - tabH - pad) + "px";
