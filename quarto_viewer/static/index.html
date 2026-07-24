@@ -316,6 +316,10 @@
   }
   .qv-obj:hover .qv-copyx { opacity: 1; }
   .qv-copyx:hover { background: #4d565e; }
+  /* Callouts: step the badges left so they never cover the fold chevron (⌄)
+     sitting at the header's right edge. */
+  .qv-hascallout .qv-delx { right: 40px; }
+  .qv-hascallout .qv-copyx { right: 66px; }
   /* live rendered preview inside object modals ("실제 들어가는 모양") */
   .obj-preview {
     border: 1px solid var(--border-strong); border-radius: 10px; background: var(--bg);
